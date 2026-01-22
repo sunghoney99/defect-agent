@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 min-h-screen selection:bg-blue-100;
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(210,100%,98%,1) 0, transparent 50%), 
+    radial-gradient(at 50% 0%, hsla(220,100%,97%,1) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(210,100%,98%,1) 0, transparent 50%);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}
