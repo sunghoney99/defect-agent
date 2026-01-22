@@ -29,10 +29,26 @@ function parseMonthFromSheetName(name: string): string | null {
   return null
 }
 
-function toMonthKey(month: string) {
-  // Assuming current year or a fixed year if not provided in file
-  // For consistency with previous logic, let's use 2024 or similar if not detectable
-  const year = new Date().getFullYear()
+function parseYearFromFileName(fileName: string): number {
+  // Try to match "25년" or "2025년" patterns
+  const shortYearMatch = fileName.match(/(\d{2})년/)
+  if (shortYearMatch) {
+    const shortYear = parseInt(shortYearMatch[1], 10)
+    // Convert 2-digit year to 4-digit (assuming 20xx for years < 50, 19xx otherwise)
+    return shortYear < 50 ? 2000 + shortYear : 1900 + shortYear
+  }
+
+  // Try to match "2025" pattern (4-digit year)
+  const fullYearMatch = fileName.match(/20(\d{2})/)
+  if (fullYearMatch) {
+    return parseInt(`20${fullYearMatch[1]}`, 10)
+  }
+
+  // Fallback to current year
+  return new Date().getFullYear()
+}
+
+function toMonthKey(month: string, year: number) {
   return `${year}-${month.padStart(2, "0")}`
 }
 
@@ -90,6 +106,9 @@ export async function analyzeFile(file: File): Promise<AnalysisSummary> {
   const buffer = await file.arrayBuffer()
   const workbook = read(buffer, { type: "array" })
 
+  // Extract year from filename (e.g., "하자보수비(브랜드)_25년09월.xlsx" → 2025)
+  const fileYear = parseYearFromFileName(file.name)
+
   // 1. Identify Sheets
   const sheetInfos: SheetInfo[] = []
   workbook.SheetNames.forEach(name => {
@@ -98,7 +117,7 @@ export async function analyzeFile(file: File): Promise<AnalysisSummary> {
 
     let info = sheetInfos.find(i => i.month === month)
     if (!info) {
-      info = { month, monthKey: toMonthKey(month), amountSheetName: null, detailSheetName: null }
+      info = { month, monthKey: toMonthKey(month, fileYear), amountSheetName: null, detailSheetName: null }
       sheetInfos.push(info)
     }
 
