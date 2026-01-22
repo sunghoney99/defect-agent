@@ -172,7 +172,17 @@ export async function analyzeFile(file: File): Promise<AnalysisSummary> {
       if (rows.length > 1) {
         const headers = rows[0].map(h => normalizeHeader(h))
 
-        const judgementFormIdx = headers.findIndex(h => h.includes("판정형태"))
+        // Try to find judgement form column - handle combined header case
+        let judgementFormIdx = headers.findIndex(h => h === "판정형태")
+        if (judgementFormIdx === -1) {
+          judgementFormIdx = headers.findIndex(h => h.includes("판정형태") && !h.includes("판정구분"))
+        }
+        // If still not found, check for combined header but look for separate 판정구분
+        const judgementClassOnlyIdx = headers.findIndex(h => h === "판정구분")
+
+        // If we have a combined header like "판정형태-판정구분", the actual values might be elsewhere
+        // Try to use judgementClassOnlyIdx if judgementFormIdx gives numeric values
+        const combinedHeaderIdx = headers.findIndex(h => h.includes("판정형태") && h.includes("판정구분"))
         const judgementClassIdx = headers.findIndex(h => h.includes("판정구분"))
         const orderNoIdx = headers.findIndex(h => h.includes("접수한번호") || h.includes("접수번호"))
         const partNameIdx = headers.findIndex(h => h.includes("부품명"))
@@ -187,7 +197,27 @@ export async function analyzeFile(file: File): Promise<AnalysisSummary> {
         rows.slice(1).forEach((row, rowIndex) => {
           if (!row || row.length === 0) return
 
-          const rawJudgement = judgementFormIdx !== -1 ? String(row[judgementFormIdx] || "") : ""
+          // Try multiple sources for judgement type
+          let rawJudgement = ""
+          if (judgementFormIdx !== -1) {
+            rawJudgement = String(row[judgementFormIdx] || "")
+          }
+          // If the value is numeric or empty, try judgementClassOnlyIdx
+          if ((!rawJudgement || /^\d+$/.test(rawJudgement)) && judgementClassOnlyIdx !== -1) {
+            rawJudgement = String(row[judgementClassOnlyIdx] || "")
+          }
+          // Also try scanning the row for known values
+          if (!rawJudgement || /^\d+$/.test(rawJudgement)) {
+            for (const cell of row) {
+              const cellStr = String(cell || "")
+              if (cellStr.includes("세트교환") || cellStr.includes("고객불만") ||
+                  cellStr.includes("R&D") || cellStr.includes("사양재검토") || cellStr.includes("영업지원")) {
+                rawJudgement = cellStr
+                break
+              }
+            }
+          }
+
           let judgement = rawJudgement.trim()
           if (judgement.includes("세트교환")) judgement = "세트교환요구"
           if (judgement.includes("고객불만")) judgement = "고객불만"
