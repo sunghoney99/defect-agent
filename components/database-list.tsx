@@ -131,7 +131,7 @@ export default function DatabaseList() {
 
                                     return (
                                         <motion.div
-                                            key={upload.id}
+                                            key={upload._id}
                                             initial={{ opacity: 0, x: -20 }}
                                             animate={{ opacity: 1, x: 0 }}
                                             exit={{ opacity: 0, x: 20 }}
@@ -173,7 +173,7 @@ export default function DatabaseList() {
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation()
-                                                        deleteUpload(upload.id)
+                                                        deleteUpload(upload._id)
                                                     }}
                                                     className="p-2 hover:bg-red-50 rounded-xl transition-all hover:scale-110 active:scale-90"
                                                     title="삭제"

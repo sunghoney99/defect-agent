@@ -7,14 +7,17 @@ import {
   useEffect,
   useState
 } from "react"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { Id } from "@/convex/_generated/dataModel"
 import { AnalysisSummary } from "@/lib/types"
 import { analyzeFile, buildExecutiveReport } from "@/lib/analysis-engine"
 
 type UploadRecord = {
-  id: number
+  _id: Id<"uploads">
   month: string
   fileName: string
-  createdAt: string
+  createdAt: number
 }
 
 type AnalysisContextValue = {
@@ -25,8 +28,8 @@ type AnalysisContextValue = {
   error: string | null
   analyze: (file: File) => Promise<void>
   setCurrentMonth: (monthKey: string) => void
-  deleteUpload: (id: number) => Promise<void>
-  fetchUploads: () => Promise<void>
+  deleteUpload: (id: Id<"uploads">) => Promise<void>
+  fetchUploads: () => void
   reset: () => void
   clearAnalysis: () => void
 }
@@ -63,32 +66,24 @@ function saveToStorage(summary: AnalysisSummary | null) {
 export function AnalysisProvider(props: { children: React.ReactNode }) {
   const [summary, setSummary] = useState<AnalysisSummary | null>(null)
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisSummary | null>(null)
-  const [uploads, setUploads] = useState<UploadRecord[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchUploads = useCallback(async () => {
-    try {
-      const res = await fetch('/api/uploads', { cache: 'no-store' })
-      if (!res.ok) {
-        const text = await res.text()
-        console.error("Server Error:", text)
-        return
-      }
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        setUploads(data)
-      }
-    } catch (e) {
-      console.error("Failed to fetch uploads:", e)
-    }
-  }, [])
+  // Convex queries and mutations
+  const uploadsData = useQuery(api.uploads.list)
+  const createUpload = useMutation(api.uploads.create)
+  const removeUpload = useMutation(api.uploads.remove)
+
+  const uploads = uploadsData ?? []
 
   useEffect(() => {
     const initial = loadFromStorage()
     if (initial) setSummary(initial)
-    void fetchUploads()
-  }, [fetchUploads])
+  }, [])
+
+  const fetchUploads = useCallback(() => {
+    // Convex auto-refreshes, this is just for API compatibility
+  }, [])
 
   const analyze = useCallback(async (file: File) => {
     setIsAnalyzing(true)
@@ -161,43 +156,24 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         return finalSummary
       })
 
-      // Post to DB
+      // Post to Convex DB
       const resultMonth = result.monthlyStats.length > 0
         ? result.monthlyStats[result.monthlyStats.length - 1].monthKey
         : "Unknown"
 
-      console.log("Saving upload to DB:", { month: resultMonth, fileName: file.name })
-      const postRes = await fetch('/api/uploads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          month: resultMonth,
-          fileName: file.name
-        })
+      console.log("Saving upload to Convex:", { month: resultMonth, fileName: file.name })
+      await createUpload({
+        month: resultMonth,
+        fileName: file.name
       })
 
-      if (!postRes.ok) {
-        let errorMsg = "DB 저장에 실패했습니다."
-        try {
-          const errorData = await postRes.json()
-          errorMsg = errorData.error || errorMsg
-        } catch {
-          const text = await postRes.text()
-          console.error("Server raw error:", text)
-        }
-        console.error("Failed to post upload:", errorMsg)
-        throw new Error(errorMsg)
-      }
-
-      // Refresh list
-      await fetchUploads()
     } catch (e: any) {
       console.error("Analysis Error:", e)
       setError(e.message || "엑셀 파일을 분석하는 중 오류가 발생했습니다.")
     } finally {
       setIsAnalyzing(false)
     }
-  }, [fetchUploads])
+  }, [createUpload])
 
   const setCurrentMonth = useCallback((monthKey: string) => {
     if (!summary) return
@@ -211,7 +187,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     )
 
     // Filter monthlyStats and records for the UI to focus on this month
-    // Most UI components already slice based on the last entry, so we ensure 
+    // Most UI components already slice based on the last entry, so we ensure
     // the monthlyStats ends with the selected month
     const relevantStatsIdx = summary.monthlyStats.findIndex(s => s.monthKey === monthKey)
     if (relevantStatsIdx === -1) return
@@ -223,18 +199,13 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     })
   }, [summary])
 
-  const deleteUpload = useCallback(async (id: number) => {
+  const deleteUpload = useCallback(async (id: Id<"uploads">) => {
     try {
-      const res = await fetch(`/api/uploads?id=${id}`, {
-        method: 'DELETE'
-      })
-      if (res.ok) {
-        setUploads(prev => prev.filter(u => u.id !== id))
-      }
+      await removeUpload({ id })
     } catch (e) {
       console.error("Failed to delete upload:", e)
     }
-  }, [])
+  }, [removeUpload])
 
   const reset = useCallback(() => {
     setSummary(null)
@@ -275,4 +246,3 @@ export function useAnalysis() {
   }
   return context
 }
-

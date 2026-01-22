@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import "./globals.css"
+import { ConvexClientProvider } from "@/components/convex-provider"
 
 export const metadata: Metadata = {
   title: "Defect Maintenance Cost Agent",
@@ -9,7 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout(props: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body>{props.children}</body>
+      <body>
+        <ConvexClientProvider>{props.children}</ConvexClientProvider>
+      </body>
     </html>
   )
 }

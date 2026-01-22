@@ -4,13 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "autoprefixer": "10.4.20",
+    "convex": "^1.31.6",
     "date-fns": "^4.1.0",
     "framer-motion": "11.11.10",
     "lucide-react": "0.460.0",
