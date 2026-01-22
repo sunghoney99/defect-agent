@@ -155,47 +155,19 @@ export function NewAnalysisZone() {
                     </button>
                 </div>
 
-                <div className="space-y-4 px-1">
-                    <div className="space-y-3">
-                        <p className="text-[11px] font-bold text-slate-500 leading-relaxed italic">
-                            * 아래 가이드에서 <span className="text-emerald-600 font-black">x</span>는 파일이 해당되는 월(숫자)을 의미합니다. (예: 12월 데이터라면 x=12)
-                        </p>
-
-                        <div className="grid gap-4">
-                            <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-3">
-                                <div className="flex items-center gap-2 text-slate-800">
-                                    <div className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-black">1</div>
-                                    <p className="text-xs font-black">시트 및 요약 데이터 구성</p>
-                                </div>
-                                <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
-                                    <strong className="text-slate-900">&apos;x월 하자보수비 금액&apos;</strong> 시트 내에 해당 월의 브랜드별 하자보수비 통계를 입력합니다.
-                                    반드시 <span className="bg-slate-100 px-1 rounded font-bold">&apos;구분 / R&D / 고객불만 / 사양재검토 / 세트교환요구 / 영업지원(BS) / 전체 / 담당자&apos;</span> 순서로 데이터가 구성되어야 합니다.
-                                </p>
-                            </div>
-
-                            <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-3">
-                                <div className="flex items-center gap-2 text-slate-800">
-                                    <div className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-black">2</div>
-                                    <p className="text-xs font-black">분석 대상 데이터 선별 및 정리</p>
-                                </div>
-                                <div className="text-[11px] text-slate-600 leading-relaxed pl-7 space-y-2">
-                                    <p>
-                                        판정형태가 <span className="text-emerald-600 font-bold">&apos;세트교환요구&apos;</span> 또는 <span className="text-blue-600 font-bold">&apos;고객불만&apos;</span>인 건을 우선으로 추려냅니다.
-                                    </p>
-                                    <p>
-                                        데이터는 <strong className="text-slate-900 text-accent">하나의 접수번호당 하나의 행(Row)</strong>만 존재하도록 중복을 정리해주시고, 1행의 항목 구분과 맞지 않는 불필요한 열은 숨기기 또는 삭제 처리해 주시기 바랍니다.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100 flex items-start gap-3">
-                        <div className="text-amber-500 font-bold mt-0.5">💡</div>
-                        <p className="text-[11px] text-amber-700/90 leading-relaxed font-medium">
-                            정리가 어려우신 경우 우측 상단의 <strong>[표준 양식 다운로드]</strong>를 통해 제공되는 샘플 시트의 구조를 그대로 복격하여 사용하시면 가장 정확한 분석 결과를 얻으실 수 있습니다.
-                        </p>
-                    </div>
+                <div className="space-y-3 px-1">
+                    <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
+                        * 우측 상단의 <strong className="text-emerald-600">[표준 양식 다운로드]</strong>를 통해 제공되는 샘플 시트의 구조를 그대로 사용하시면 가장 정확한 분석 결과를 얻으실 수 있습니다.
+                    </p>
+                    <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
+                        * 샘플 시트명의 <span className="text-emerald-600 font-black">x</span>는 파일이 해당하는 월(month)를 의미합니다. 월을 x 위치에 기입해주세요.
+                    </p>
+                    <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
+                        * 판정형태가 <span className="text-emerald-600 font-bold">&apos;세트교환요구&apos;</span> 또는 <span className="text-blue-600 font-bold">&apos;고객불만&apos;</span>인 건만 분석해주는 시스템으로, 시트에 판정형태가 &apos;세트교환요구&apos; 또는 &apos;고객불만&apos;인 건만 남겨주세요.
+                    </p>
+                    <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
+                        * 데이터는 <strong className="text-slate-900">하나의 접수번호당 하나의 행(row)</strong>만 존재하도록 접수번호의 중복을 정리해주세요.
+                    </p>
                 </div>
             </div>
         </div>
