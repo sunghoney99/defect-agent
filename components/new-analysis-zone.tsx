@@ -168,8 +168,8 @@ export function NewAnalysisZone() {
                                     <p className="text-xs font-black">시트 및 요약 데이터 구성</p>
                                 </div>
                                 <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
-                                    <strong className="text-slate-900">'x월 하자보수비 금액'</strong> 시트 내에 해당 월의 브랜드별 하자보수비 통계를 입력합니다.
-                                    반드시 <span className="bg-slate-100 px-1 rounded font-bold">'구분 / R&D / 고객불만 / 사양재검토 / 세트교환요구 / 영업지원(BS) / 전체 / 담당자'</span> 순서로 데이터가 구성되어야 합니다.
+                                    <strong className="text-slate-900">&apos;x월 하자보수비 금액&apos;</strong> 시트 내에 해당 월의 브랜드별 하자보수비 통계를 입력합니다.
+                                    반드시 <span className="bg-slate-100 px-1 rounded font-bold">&apos;구분 / R&D / 고객불만 / 사양재검토 / 세트교환요구 / 영업지원(BS) / 전체 / 담당자&apos;</span> 순서로 데이터가 구성되어야 합니다.
                                 </p>
                             </div>
 
@@ -180,7 +180,7 @@ export function NewAnalysisZone() {
                                 </div>
                                 <div className="text-[11px] text-slate-600 leading-relaxed pl-7 space-y-2">
                                     <p>
-                                        판정형태가 <span className="text-emerald-600 font-bold">'세트교환요구'</span> 또는 <span className="text-blue-600 font-bold">'고객불만'</span>인 건을 우선으로 추려냅니다.
+                                        판정형태가 <span className="text-emerald-600 font-bold">&apos;세트교환요구&apos;</span> 또는 <span className="text-blue-600 font-bold">&apos;고객불만&apos;</span>인 건을 우선으로 추려냅니다.
                                     </p>
                                     <p>
                                         데이터는 <strong className="text-slate-900 text-accent">하나의 접수번호당 하나의 행(Row)</strong>만 존재하도록 중복을 정리해주시고, 1행의 항목 구분과 맞지 않는 불필요한 열은 숨기기 또는 삭제 처리해 주시기 바랍니다.
