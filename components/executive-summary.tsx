@@ -13,6 +13,7 @@ import {
   ChevronRight,
   AlertCircle
 } from "lucide-react"
+import { CommentSection } from "./comment-section"
 
 export function ExecutiveSummary() {
   const { summary, currentAnalysis } = useAnalysis()
@@ -53,6 +54,13 @@ export function ExecutiveSummary() {
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-8">
+          {/* Comment Section */}
+          {targetMonthKey && (
+            <div className="mb-8">
+              <CommentSection monthKey={targetMonthKey} />
+            </div>
+          )}
+
           {/* Top Monthly Stats */}
           <div className="mb-8 p-6 rounded-[2rem] bg-slate-50 border border-slate-200/60 space-y-4">
             <div className="flex items-center gap-2 mb-2">
