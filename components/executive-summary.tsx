@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { useAnalysis } from "@/context/analysis-context"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { motion, AnimatePresence } from "framer-motion"
@@ -11,12 +12,23 @@ import {
   Tag,
   Box,
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  X,
+  FileText,
+  MessageSquare
 } from "lucide-react"
 import { CommentSection } from "./comment-section"
 
+type SelectedIncrease = {
+  product: string
+  normalizedCause: string
+  previousCount: number
+  currentCount: number
+}
+
 export function ExecutiveSummary() {
   const { summary, currentAnalysis } = useAnalysis()
+  const [selectedIncrease, setSelectedIncrease] = useState<SelectedIncrease | null>(null)
 
   if (!currentAnalysis || !currentAnalysis.executiveReport || !summary) return null
   const report = currentAnalysis.executiveReport
@@ -40,6 +52,16 @@ export function ExecutiveSummary() {
   const mockSales = 10000000000 // 100억
   const curSalesRatio = (curCost / mockSales) * 100
   const prevSalesRatio = (prevCost / (mockSales * 0.9)) * 100 // Mock slightly lower sales for prev month
+
+  // Get detailed records for selected increase item
+  const increaseDetailRecords = useMemo(() => {
+    if (!selectedIncrease || !summary) return []
+    return summary.records.filter(r =>
+      r.monthKey === targetMonthKey &&
+      r.product === selectedIncrease.product &&
+      r.normalizedCause === selectedIncrease.normalizedCause
+    )
+  }, [selectedIncrease, summary, targetMonthKey])
 
   return (
     <div className="space-y-6">
@@ -211,42 +233,163 @@ export function ExecutiveSummary() {
           {/* New: Significant Increase Highlights */}
           {prevMonth && (report.increasedProducts?.length > 0 || report.increasedCauses?.length > 0) && (
             <div className="mt-12 pt-8 border-t border-slate-100 space-y-6">
-              <div className="flex items-center gap-2 px-1">
-                <AlertCircle className="w-4 h-4 text-red-500" />
-                <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">[전월 대비 주요 증가 항목]</h3>
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">[전월 대비 주요 증가 항목]</h3>
+                </div>
+                {selectedIncrease && (
+                  <button
+                    onClick={() => setSelectedIncrease(null)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase hover:bg-accent transition-all"
+                  >
+                    <X className="w-3 h-3" />
+                    목록으로
+                  </button>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(() => {
-                  // Merge and deduplicate by product + cause
-                  const highlights = [...(report.increasedProducts || []), ...(report.increasedCauses || [])];
-                  const seen = new Set();
-                  return highlights
-                    .filter(h => {
-                      const key = `${h.product}|${h.normalizedCause}`;
-                      if (seen.has(key)) return false;
-                      seen.add(key);
-                      return true;
-                    })
-                    .sort((a, b) => (b.currentCount - b.previousCount) - (a.currentCount - a.previousCount))
-                    .slice(0, 6)
-                    .map((item, idx) => (
-                      <div key={idx} className="p-4 rounded-2xl bg-red-50/50 border border-red-100 flex items-center justify-between group/item hover:bg-red-50 transition-all">
-                        <div className="space-y-1">
-                          <p className="text-xs font-black text-slate-800">{item.product}</p>
-                          <p className="text-[10px] font-bold text-slate-400">{item.normalizedCause}</p>
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center gap-1 text-red-500 justify-end">
-                            <TrendingUp className="w-3 h-3" />
-                            <span className="text-xs font-black">+{item.currentCount - item.previousCount}건</span>
+              <AnimatePresence mode="wait">
+                {!selectedIncrease ? (
+                  <motion.div
+                    key="list"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+                  >
+                    {(() => {
+                      // Merge and deduplicate by product + cause
+                      const highlights = [...(report.increasedProducts || []), ...(report.increasedCauses || [])];
+                      const seen = new Set();
+                      return highlights
+                        .filter(h => {
+                          const key = `${h.product}|${h.normalizedCause}`;
+                          if (seen.has(key)) return false;
+                          seen.add(key);
+                          return true;
+                        })
+                        .sort((a, b) => (b.currentCount - b.previousCount) - (a.currentCount - a.previousCount))
+                        .slice(0, 6)
+                        .map((item, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => setSelectedIncrease({
+                              product: item.product,
+                              normalizedCause: item.normalizedCause,
+                              previousCount: item.previousCount,
+                              currentCount: item.currentCount
+                            })}
+                            className="p-4 rounded-2xl bg-red-50/50 border border-red-100 flex items-center justify-between group/item hover:bg-red-50 hover:border-red-200 hover:shadow-lg transition-all cursor-pointer"
+                          >
+                            <div className="space-y-1">
+                              <p className="text-xs font-black text-slate-800">{item.product}</p>
+                              <p className="text-[10px] font-bold text-slate-400">{item.normalizedCause}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="flex items-center gap-1 text-red-500 justify-end">
+                                  <TrendingUp className="w-3 h-3" />
+                                  <span className="text-xs font-black">+{item.currentCount - item.previousCount}건</span>
+                                </div>
+                                <p className="text-[10px] font-bold text-slate-400">{item.previousCount}건 → {item.currentCount}건</p>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-slate-300 group-hover/item:text-red-400 transition-colors" />
+                            </div>
                           </div>
-                          <p className="text-[10px] font-bold text-slate-400">{item.previousCount}건 → {item.currentCount}건</p>
-                        </div>
+                        ));
+                    })()}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="detail"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="space-y-4"
+                  >
+                    {/* Selected Item Header */}
+                    <div className="p-4 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-black text-slate-800">{selectedIncrease.product}</p>
+                        <p className="text-xs font-bold text-red-500">{selectedIncrease.normalizedCause}</p>
                       </div>
-                    ));
-                })()}
-              </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-red-500 justify-end">
+                          <TrendingUp className="w-4 h-4" />
+                          <span className="text-sm font-black">+{selectedIncrease.currentCount - selectedIncrease.previousCount}건 증가</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-400">{selectedIncrease.previousCount}건 → {selectedIncrease.currentCount}건</p>
+                      </div>
+                    </div>
+
+                    {/* Detail Records */}
+                    <div className="text-xs font-bold text-slate-400 px-2 uppercase tracking-widest">
+                      당월 발생 건수: {increaseDetailRecords.length}건
+                    </div>
+
+                    {increaseDetailRecords.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <p className="text-sm text-slate-400 font-bold">상세 내역이 없습니다.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                        {increaseDetailRecords.map((record, idx) => (
+                          <div
+                            key={record.id || idx}
+                            className="p-5 rounded-2xl bg-white border border-slate-100 hover:shadow-lg transition-all space-y-4"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="px-3 py-1 rounded-lg bg-red-50 text-red-500 text-xs font-black">
+                                #{idx + 1}
+                              </span>
+                              {record.extraFields?.orderNo && (
+                                <span className="text-xs text-slate-400 font-medium">
+                                  접수번호: {record.extraFields.orderNo}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* 요구내역 */}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-blue-500" />
+                                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">요구내역</span>
+                              </div>
+                              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                  {record.rawCauseFields?.requestText || "-"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* 조치결과특이사항 */}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-emerald-500" />
+                                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">조치결과특이사항</span>
+                              </div>
+                              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                  {record.rawCauseFields?.actionText || "-"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {!selectedIncrease && (
+                <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100">
+                  <p className="text-[11px] text-amber-700/80 leading-relaxed font-medium">
+                    💡 항목을 클릭하면 해당 건의 요구내역 및 조치결과특이사항을 확인할 수 있습니다.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
