@@ -30,12 +30,24 @@ export function ExecutiveSummary() {
   const { summary, currentAnalysis } = useAnalysis()
   const [selectedIncrease, setSelectedIncrease] = useState<SelectedIncrease | null>(null)
 
+  // Get target month key (must be calculated before useMemo to avoid conditional hook)
+  const targetMonthKey = currentAnalysis?.monthlyStats?.[currentAnalysis.monthlyStats.length - 1]?.monthKey
+
+  // Get detailed records for selected increase item (hook must be called unconditionally)
+  const increaseDetailRecords = useMemo(() => {
+    if (!selectedIncrease || !summary || !targetMonthKey) return []
+    return summary.records.filter(r =>
+      r.monthKey === targetMonthKey &&
+      r.product === selectedIncrease.product &&
+      r.normalizedCause === selectedIncrease.normalizedCause
+    )
+  }, [selectedIncrease, summary, targetMonthKey])
+
   if (!currentAnalysis || !currentAnalysis.executiveReport || !summary) return null
   const report = currentAnalysis.executiveReport
   const breakdown = report.detailedBreakdown || []
 
   // Get costs from the overall summary to find previous month context
-  const targetMonthKey = currentAnalysis.monthlyStats[currentAnalysis.monthlyStats.length - 1]?.monthKey
   const allTotals = summary.monthlyTotals
   const targetIdx = allTotals.findIndex(t => t.monthKey === targetMonthKey)
 
@@ -52,16 +64,6 @@ export function ExecutiveSummary() {
   const mockSales = 10000000000 // 100억
   const curSalesRatio = (curCost / mockSales) * 100
   const prevSalesRatio = (prevCost / (mockSales * 0.9)) * 100 // Mock slightly lower sales for prev month
-
-  // Get detailed records for selected increase item
-  const increaseDetailRecords = useMemo(() => {
-    if (!selectedIncrease || !summary) return []
-    return summary.records.filter(r =>
-      r.monthKey === targetMonthKey &&
-      r.product === selectedIncrease.product &&
-      r.normalizedCause === selectedIncrease.normalizedCause
-    )
-  }, [selectedIncrease, summary, targetMonthKey])
 
   return (
     <div className="space-y-6">
