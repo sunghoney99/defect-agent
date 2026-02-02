@@ -8,13 +8,15 @@ import {
     Loader2,
     Plus,
     AlertCircle,
-    X
+    X,
+    CheckCircle2
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 export function NewAnalysisZone() {
     const { analyze, isAnalyzing, error, currentAnalysis, clearAnalysis } = useAnalysis()
     const [isDragging, setIsDragging] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -26,19 +28,30 @@ export function NewAnalysisZone() {
         setIsDragging(false)
     }
 
+    const processMultipleFiles = async (files: File[]) => {
+        const xlsxFiles = files.filter(f => f.name.endsWith(".xlsx"))
+        if (xlsxFiles.length === 0) return
+
+        for (let i = 0; i < xlsxFiles.length; i++) {
+            setUploadProgress({ current: i + 1, total: xlsxFiles.length, fileName: xlsxFiles[i].name })
+            await analyze(xlsxFiles[i])
+        }
+        setUploadProgress(null)
+    }
+
     const handleDrop = async (e: React.DragEvent) => {
         e.preventDefault()
         setIsDragging(false)
-        const file = e.dataTransfer.files[0]
-        if (file && file.name.endsWith(".xlsx")) {
-            await analyze(file)
-        }
+        const files = Array.from(e.dataTransfer.files)
+        await processMultipleFiles(files)
     }
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (file) {
-            await analyze(file)
+        const files = e.target.files ? Array.from(e.target.files) : []
+        if (files.length > 0) {
+            await processMultipleFiles(files)
+            // Reset input value to allow re-selecting same files
+            e.target.value = ""
         }
     }
 
@@ -80,6 +93,7 @@ export function NewAnalysisZone() {
                     ref={fileInputRef}
                     onChange={handleFileChange}
                     accept=".xlsx"
+                    multiple
                     className="hidden"
                 />
 
@@ -105,10 +119,19 @@ export function NewAnalysisZone() {
 
                     <div className="space-y-1">
                         <p className="text-sm font-black text-slate-800">
-                            {isAnalyzing ? "AI 분석 엔진 가동 중..." : "분석할 엑셀 파일을 선택하거나 끌어다 놓으세요"}
+                            {isAnalyzing
+                                ? uploadProgress
+                                    ? `분석 중... (${uploadProgress.current}/${uploadProgress.total})`
+                                    : "AI 분석 엔진 가동 중..."
+                                : "분석할 엑셀 파일을 선택하거나 끌어다 놓으세요"}
                         </p>
+                        {uploadProgress && isAnalyzing && (
+                            <p className="text-[11px] text-accent font-bold truncate max-w-[250px]">
+                                {uploadProgress.fileName}
+                            </p>
+                        )}
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                            .xlsx format only • auto cause classification
+                            .xlsx format only • 여러 파일 동시 업로드 가능
                         </p>
                     </div>
                 </div>
