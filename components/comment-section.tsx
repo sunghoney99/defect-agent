@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { MessageSquare, Send, User, Building2, Trash2 } from "lucide-react"
+import { MessageSquare, Send, User, Building2, Trash2, AlertCircle } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { format } from "date-fns"
 
@@ -12,7 +12,11 @@ interface CommentSectionProps {
 }
 
 export function CommentSection({ monthKey }: CommentSectionProps) {
-  const comments = useQuery(api.comments.listByMonth, { monthKey })
+  // Skip query if monthKey is invalid
+  const comments = useQuery(
+    api.comments.listByMonth,
+    monthKey ? { monthKey } : "skip"
+  )
   const createComment = useMutation(api.comments.create)
   const removeComment = useMutation(api.comments.remove)
 
@@ -107,6 +111,11 @@ export function CommentSection({ monthKey }: CommentSectionProps) {
       {/* Comments List */}
       <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar">
         <AnimatePresence mode="popLayout">
+          {comments === undefined && (
+            <div className="py-6 text-center">
+              <p className="text-xs text-slate-400 font-bold">코멘트 로딩 중...</p>
+            </div>
+          )}
           {comments && comments.length === 0 && (
             <motion.div
               initial={{ opacity: 0 }}

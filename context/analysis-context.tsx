@@ -176,7 +176,10 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   }, [createUpload])
 
   const setCurrentMonth = useCallback((monthKey: string) => {
-    if (!summary) return
+    if (!summary) {
+      setError("분석 데이터가 없습니다. 해당 월의 엑셀 파일을 다시 업로드해주세요.")
+      return
+    }
 
     // Re-generate the executive report for the selected month using historical data
     const finalReport = buildExecutiveReport(
@@ -190,8 +193,12 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     // Most UI components already slice based on the last entry, so we ensure
     // the monthlyStats ends with the selected month
     const relevantStatsIdx = summary.monthlyStats.findIndex(s => s.monthKey === monthKey)
-    if (relevantStatsIdx === -1) return
+    if (relevantStatsIdx === -1) {
+      setError("해당 월의 분석 데이터를 찾을 수 없습니다. 엑셀 파일을 다시 업로드해주세요.")
+      return
+    }
 
+    setError(null)
     setCurrentAnalysis({
       ...summary,
       monthlyStats: summary.monthlyStats.slice(0, relevantStatsIdx + 1),
