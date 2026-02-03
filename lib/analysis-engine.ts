@@ -191,10 +191,21 @@ export async function analyzeFile(file: File): Promise<AnalysisSummary> {
           }
         })
 
+        // Find monthly sales from column I (index 8) or by header name
+        let monthlySales = 0
+        const salesIdx = headers.findIndex(h => h.includes("당월매출") || h.includes("매출"))
+        if (salesIdx !== -1) {
+          monthlySales = parseCost(dataRow[salesIdx])
+        } else if (dataRow[8] !== undefined) {
+          // Fallback to column I (index 8) if header not found
+          monthlySales = parseCost(dataRow[8])
+        }
+
         if (Object.keys(breakdown).length > 0) {
           monthlyTotals.push({
             monthKey: info.monthKey,
             totalCost: totalCost || breakdown["전체"] || 0,
+            monthlySales: monthlySales || undefined,
             judgementBreakdown: breakdown,
             source: "summarySheet"
           })

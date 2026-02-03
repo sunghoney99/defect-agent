@@ -59,11 +59,12 @@ export function ExecutiveSummary() {
   const costDiff = curCost - prevCost
   const costRatio = prevCost > 0 ? (costDiff / prevCost) * 100 : 0
 
-  // Mock Sales Data (since not provided in Excel)
-  // In a real scenario, this would come from another source or user input
-  const mockSales = 10000000000 // 100억
-  const curSalesRatio = (curCost / mockSales) * 100
-  const prevSalesRatio = (prevCost / (mockSales * 0.9)) * 100 // Mock slightly lower sales for prev month
+  // Get sales data from monthly totals
+  const curSales = latestMonth?.monthlySales || 0
+  const prevSales = prevMonth?.monthlySales || 0
+  const curSalesRatio = curSales > 0 ? (curCost / curSales) * 100 : 0
+  const prevSalesRatio = prevSales > 0 ? (prevCost / prevSales) * 100 : 0
+  const salesRatioDiff = curSalesRatio - prevSalesRatio
 
   return (
     <div className="space-y-6">
@@ -111,12 +112,31 @@ export function ExecutiveSummary() {
                   </span>하였습니다.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <AlertCircle className="w-4 h-4 text-slate-400" />
-                <p className="text-xs font-medium text-slate-500 italic">
-                  * 매출 데이터는 현재 시스템에 포함되어 있지 않아 비용 추이 중심으로 분석되었습니다.
-                </p>
-              </div>
+              {curSales > 0 ? (
+                <div className="flex items-center gap-3">
+                  {salesRatioDiff > 0 ? <TrendingUp className="w-4 h-4 text-red-500" /> : salesRatioDiff < 0 ? <TrendingDown className="w-4 h-4 text-blue-500" /> : <Minus className="w-4 h-4 text-slate-400" />}
+                  <p className="text-sm font-bold text-slate-700">
+                    매출 대비 하자보수비 비중은 <span className="text-accent font-black">{Math.round(curSalesRatio * 1000) / 1000}%</span>로,
+                    {prevSales > 0 ? (
+                      <>
+                        {" "}전월(<span className="text-slate-500">{Math.round(prevSalesRatio * 1000) / 1000}%</span>) 대비{" "}
+                        <span className={salesRatioDiff > 0 ? "text-red-500" : salesRatioDiff < 0 ? "text-blue-500" : "text-slate-500"}>
+                          {Math.abs(Math.round(salesRatioDiff * 1000) / 1000)}%p {salesRatioDiff > 0 ? "증가" : salesRatioDiff < 0 ? "감소" : "동일"}
+                        </span>하였습니다.
+                      </>
+                    ) : (
+                      " 전월 매출 데이터가 없어 비교가 불가합니다."
+                    )}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-4 h-4 text-slate-400" />
+                  <p className="text-xs font-medium text-slate-500 italic">
+                    * 매출 데이터가 엑셀 파일에 포함되어 있지 않아 비용 추이 중심으로 분석되었습니다.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

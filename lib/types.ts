@@ -52,6 +52,7 @@ export type ProductCauseMonthlyStat = {
 export type MonthlyTotal = {
   monthKey: string
   totalCost: number
+  monthlySales?: number
   judgementBreakdown?: Record<string, number>
   source: "detail" | "summarySheet"
 }
