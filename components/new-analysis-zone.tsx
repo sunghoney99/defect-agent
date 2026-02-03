@@ -165,7 +165,7 @@ export function NewAnalysisZone() {
                     <button
                         onClick={() => {
                             const link = document.createElement('a');
-                            link.href = '/template.xlsx';
+                            link.href = '/template.xlsx?v=2';
                             link.download = '하자분석_시스템_표준양식.xlsx';
                             document.body.appendChild(link);
                             link.click();
