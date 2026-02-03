@@ -116,12 +116,12 @@ export function ExecutiveSummary() {
                 <div className="flex items-center gap-3">
                   {salesRatioDiff > 0 ? <TrendingUp className="w-4 h-4 text-red-500" /> : salesRatioDiff < 0 ? <TrendingDown className="w-4 h-4 text-blue-500" /> : <Minus className="w-4 h-4 text-slate-400" />}
                   <p className="text-sm font-bold text-slate-700">
-                    매출 대비 하자보수비 비중은 <span className="text-accent font-black">{Math.round(curSalesRatio * 1000) / 1000}%</span>로,
+                    매출 대비 하자보수비 비중은 <span className="text-accent font-black">{Math.round(curSalesRatio * 10) / 10}%</span>로,
                     {prevSales > 0 ? (
                       <>
-                        {" "}전월(<span className="text-slate-500">{Math.round(prevSalesRatio * 1000) / 1000}%</span>) 대비{" "}
+                        {" "}전월(<span className="text-slate-500">{Math.round(prevSalesRatio * 10) / 10}%</span>) 대비{" "}
                         <span className={salesRatioDiff > 0 ? "text-red-500" : salesRatioDiff < 0 ? "text-blue-500" : "text-slate-500"}>
-                          {Math.abs(Math.round(salesRatioDiff * 1000) / 1000)}%p {salesRatioDiff > 0 ? "증가" : salesRatioDiff < 0 ? "감소" : "동일"}
+                          {Math.abs(Math.round(salesRatioDiff * 10) / 10)}%p {salesRatioDiff > 0 ? "증가" : salesRatioDiff < 0 ? "감소" : "동일"}
                         </span>하였습니다.
                       </>
                     ) : (
