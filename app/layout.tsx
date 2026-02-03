@@ -3,8 +3,8 @@ import "./globals.css"
 import { ConvexClientProvider } from "@/components/convex-provider"
 
 export const metadata: Metadata = {
-  title: "Defect Maintenance Cost Agent",
-  description: "Excel 기반 결함 유지보수 비용 분석 대시보드"
+  title: "데스커 하자보수비 AI 분석 시스템",
+  description: "Excel 기반 데스커 하자보수비 분석 대시보드"
 }
 
 export default function RootLayout(props: { children: React.ReactNode }) {

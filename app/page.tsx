@@ -13,7 +13,7 @@ export default function HomePage() {
               <span className="px-2 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-black uppercase tracking-widest border border-accent/20">Alpha v0.2</span>
             </div>
             <h1 className="text-3xl font-black tracking-tight md:text-4xl text-slate-900">
-              하자보수비 AI 분석 시스템
+              데스커 하자보수비 AI 분석 시스템
             </h1>
             <p className="mt-2 text-sm text-slate-600 max-w-2xl font-medium">
               신규 데이터를 업로드하여 AI 분석 리포트를 생성하고, 과거 데이터를 체계적으로 관리하세요.
