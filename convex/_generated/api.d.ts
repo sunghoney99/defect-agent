@@ -8,7 +8,9 @@
  * @module
  */
 
+import type * as analysisData from "../analysisData.js";
 import type * as comments from "../comments.js";
+import type * as monthlyAnalysis from "../monthlyAnalysis.js";
 import type * as uploads from "../uploads.js";
 
 import type {
@@ -18,7 +20,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  analysisData: typeof analysisData;
   comments: typeof comments;
+  monthlyAnalysis: typeof monthlyAnalysis;
   uploads: typeof uploads;
 }>;
 
