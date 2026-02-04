@@ -5,7 +5,8 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useState
+  useState,
+  useRef
 } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -68,18 +69,45 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisSummary | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const loadedFromConvex = useRef(false)
 
   // Convex queries and mutations
   const uploadsData = useQuery(api.uploads.list)
   const createUpload = useMutation(api.uploads.create)
   const removeUpload = useMutation(api.uploads.remove)
+  const convexAnalysisData = useQuery(api.analysisData.get)
+  const saveAnalysisData = useMutation(api.analysisData.save)
+  const clearAnalysisData = useMutation(api.analysisData.clear)
 
   const uploads = uploadsData ?? []
 
+  // Load from Convex first, fall back to localStorage
   useEffect(() => {
+    if (loadedFromConvex.current) return
+    if (convexAnalysisData === undefined) return // still loading
+
+    if (convexAnalysisData && convexAnalysisData.data) {
+      try {
+        const parsed = JSON.parse(convexAnalysisData.data) as AnalysisSummary
+        setSummary(parsed)
+        setCurrentAnalysis(parsed)
+        saveToStorage(parsed)
+        loadedFromConvex.current = true
+        return
+      } catch {
+        // fall through to localStorage
+      }
+    }
+
+    // Fallback: load from localStorage
     const initial = loadFromStorage()
-    if (initial) setSummary(initial)
-  }, [])
+    if (initial) {
+      setSummary(initial)
+      // Also save to Convex so others can see it
+      saveAnalysisData({ data: JSON.stringify(initial) }).catch(() => {})
+    }
+    loadedFromConvex.current = true
+  }, [convexAnalysisData, saveAnalysisData])
 
   const fetchUploads = useCallback(() => {
     // Convex auto-refreshes, this is just for API compatibility
@@ -167,13 +195,19 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         fileName: file.name
       })
 
+      // Save analysis data to Convex so other users can access it
+      const latestSummary = loadFromStorage()
+      if (latestSummary) {
+        await saveAnalysisData({ data: JSON.stringify(latestSummary) })
+      }
+
     } catch (e: any) {
       console.error("Analysis Error:", e)
       setError(e.message || "엑셀 파일을 분석하는 중 오류가 발생했습니다.")
     } finally {
       setIsAnalyzing(false)
     }
-  }, [createUpload])
+  }, [createUpload, saveAnalysisData])
 
   const setCurrentMonth = useCallback((monthKey: string) => {
     if (!summary) {
@@ -219,7 +253,8 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     setCurrentAnalysis(null)
     setError(null)
     saveToStorage(null)
-  }, [])
+    clearAnalysisData().catch(() => {})
+  }, [clearAnalysisData])
 
   const clearAnalysis = useCallback(() => {
     setCurrentAnalysis(null)

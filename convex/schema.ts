@@ -15,4 +15,9 @@ export default defineSchema({
     content: v.string(),
     createdAt: v.number(),
   }).index("by_monthKey", ["monthKey"]),
+
+  analysisData: defineTable({
+    data: v.string(),
+    updatedAt: v.number(),
+  }),
 })
