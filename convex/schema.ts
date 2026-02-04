@@ -20,4 +20,14 @@ export default defineSchema({
     data: v.string(),
     updatedAt: v.number(),
   }),
+
+  monthlyAnalysis: defineTable({
+    monthKey: v.string(),
+    records: v.string(),
+    monthlyStat: v.string(),
+    productCauseStats: v.string(),
+    monthlyTotal: v.string(),
+    categories: v.string(),
+    updatedAt: v.number(),
+  }).index("by_monthKey", ["monthKey"]),
 })

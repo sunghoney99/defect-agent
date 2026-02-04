@@ -11,7 +11,7 @@ import {
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
-import { AnalysisSummary } from "@/lib/types"
+import { AnalysisSummary, MonthlyStat, ProductCauseMonthlyStat, MonthlyTotal, DefectRecord } from "@/lib/types"
 import { analyzeFile, buildExecutiveReport } from "@/lib/analysis-engine"
 
 type UploadRecord = {
@@ -70,44 +70,107 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const loadedFromConvex = useRef(false)
+  const syncedToConvex = useRef(false)
 
   // Convex queries and mutations
   const uploadsData = useQuery(api.uploads.list)
   const createUpload = useMutation(api.uploads.create)
   const removeUpload = useMutation(api.uploads.remove)
-  const convexAnalysisData = useQuery(api.analysisData.get)
-  const saveAnalysisData = useMutation(api.analysisData.save)
-  const clearAnalysisData = useMutation(api.analysisData.clear)
+  const monthlyAnalysisList = useQuery(api.monthlyAnalysis.list)
+  const saveMonthlyAnalysis = useMutation(api.monthlyAnalysis.save)
+  const removeMonthlyAnalysis = useMutation(api.monthlyAnalysis.remove)
 
   const uploads = uploadsData ?? []
 
-  // Load from Convex first, fall back to localStorage
+  // Reconstruct summary from Convex monthly analysis data
   useEffect(() => {
     if (loadedFromConvex.current) return
-    if (convexAnalysisData === undefined) return // still loading
+    if (monthlyAnalysisList === undefined) return // still loading
 
-    if (convexAnalysisData && convexAnalysisData.data) {
+    if (monthlyAnalysisList && monthlyAnalysisList.length > 0) {
       try {
-        const parsed = JSON.parse(convexAnalysisData.data) as AnalysisSummary
-        setSummary(parsed)
-        setCurrentAnalysis(parsed)
-        saveToStorage(parsed)
+        let allRecords: DefectRecord[] = []
+        let allMonthlyStats: MonthlyStat[] = []
+        let allProductCauseStats: ProductCauseMonthlyStat[] = []
+        let allMonthlyTotals: MonthlyTotal[] = []
+        let allCategories: Set<string> = new Set()
+
+        for (const doc of monthlyAnalysisList) {
+          const records = JSON.parse(doc.records) as DefectRecord[]
+          const monthlyStat = JSON.parse(doc.monthlyStat) as MonthlyStat
+          const productCauseStats = JSON.parse(doc.productCauseStats) as ProductCauseMonthlyStat[]
+          const monthlyTotal = JSON.parse(doc.monthlyTotal) as MonthlyTotal
+          const categories = JSON.parse(doc.categories) as string[]
+
+          allRecords.push(...records)
+          allMonthlyStats.push(monthlyStat)
+          allProductCauseStats.push(...productCauseStats)
+          allMonthlyTotals.push(monthlyTotal)
+          categories.forEach(c => allCategories.add(c))
+        }
+
+        allMonthlyStats.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+        allMonthlyTotals.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+        allProductCauseStats.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+
+        const latestMonth = allMonthlyStats[allMonthlyStats.length - 1]?.monthKey
+        const executiveReport = buildExecutiveReport(allProductCauseStats, allMonthlyTotals, allRecords, latestMonth)
+
+        const reconstructed: AnalysisSummary = {
+          records: allRecords,
+          monthlyStats: allMonthlyStats,
+          categories: Array.from(allCategories),
+          productCauseMonthlyStats: allProductCauseStats,
+          monthlyTotals: allMonthlyTotals,
+          executiveReport
+        }
+
+        setSummary(reconstructed)
+        setCurrentAnalysis(reconstructed)
+        saveToStorage(reconstructed)
         loadedFromConvex.current = true
         return
-      } catch {
-        // fall through to localStorage
+      } catch (e) {
+        console.error("Failed to load from Convex:", e)
       }
     }
 
-    // Fallback: load from localStorage
+    // Fallback: load from localStorage and sync to Convex
     const initial = loadFromStorage()
     if (initial) {
       setSummary(initial)
-      // Also save to Convex so others can see it
-      saveAnalysisData({ data: JSON.stringify(initial) }).catch(() => {})
+      // Sync localStorage data to Convex per month
+      if (!syncedToConvex.current) {
+        syncedToConvex.current = true
+        syncLocalStorageToConvex(initial)
+      }
     }
     loadedFromConvex.current = true
-  }, [convexAnalysisData, saveAnalysisData])
+  }, [monthlyAnalysisList])
+
+  // Sync localStorage data to Convex (one-time migration)
+  const syncLocalStorageToConvex = useCallback(async (data: AnalysisSummary) => {
+    try {
+      for (const stat of data.monthlyStats) {
+        const monthRecords = data.records.filter(r => r.monthKey === stat.monthKey)
+        const monthProductCauseStats = data.productCauseMonthlyStats.filter(s => s.monthKey === stat.monthKey)
+        const monthTotal = data.monthlyTotals.find(t => t.monthKey === stat.monthKey)
+        if (!monthTotal) continue
+
+        await saveMonthlyAnalysis({
+          monthKey: stat.monthKey,
+          records: JSON.stringify(monthRecords),
+          monthlyStat: JSON.stringify(stat),
+          productCauseStats: JSON.stringify(monthProductCauseStats),
+          monthlyTotal: JSON.stringify(monthTotal),
+          categories: JSON.stringify(data.categories),
+        })
+      }
+      console.log("Synced localStorage data to Convex successfully")
+    } catch (e) {
+      console.error("Failed to sync to Convex:", e)
+    }
+  }, [saveMonthlyAnalysis])
 
   const fetchUploads = useCallback(() => {
     // Convex auto-refreshes, this is just for API compatibility
@@ -195,10 +258,21 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         fileName: file.name
       })
 
-      // Save analysis data to Convex so other users can access it
-      const latestSummary = loadFromStorage()
-      if (latestSummary) {
-        await saveAnalysisData({ data: JSON.stringify(latestSummary) })
+      // Save each month's analysis data to Convex
+      for (const stat of result.monthlyStats) {
+        const monthRecords = result.records.filter(r => r.monthKey === stat.monthKey)
+        const monthProductCauseStats = result.productCauseMonthlyStats.filter(s => s.monthKey === stat.monthKey)
+        const monthTotal = result.monthlyTotals.find(t => t.monthKey === stat.monthKey)
+        if (!monthTotal) continue
+
+        await saveMonthlyAnalysis({
+          monthKey: stat.monthKey,
+          records: JSON.stringify(monthRecords),
+          monthlyStat: JSON.stringify(stat),
+          productCauseStats: JSON.stringify(monthProductCauseStats),
+          monthlyTotal: JSON.stringify(monthTotal),
+          categories: JSON.stringify(result.categories),
+        })
       }
 
     } catch (e: any) {
@@ -207,7 +281,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     } finally {
       setIsAnalyzing(false)
     }
-  }, [createUpload, saveAnalysisData])
+  }, [createUpload, saveMonthlyAnalysis])
 
   const setCurrentMonth = useCallback((monthKey: string) => {
     if (!summary) {
@@ -242,19 +316,26 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
 
   const deleteUpload = useCallback(async (id: Id<"uploads">) => {
     try {
+      // Find the upload to get its month before deleting
+      const upload = uploads.find(u => u._id === id)
       await removeUpload({ id })
+      // Also remove the monthly analysis data
+      if (upload) {
+        await removeMonthlyAnalysis({ monthKey: upload.month })
+      }
     } catch (e) {
       console.error("Failed to delete upload:", e)
     }
-  }, [removeUpload])
+  }, [removeUpload, removeMonthlyAnalysis, uploads])
 
   const reset = useCallback(() => {
     setSummary(null)
     setCurrentAnalysis(null)
     setError(null)
     saveToStorage(null)
-    clearAnalysisData().catch(() => {})
-  }, [clearAnalysisData])
+    loadedFromConvex.current = false
+    syncedToConvex.current = false
+  }, [])
 
   const clearAnalysis = useCallback(() => {
     setCurrentAnalysis(null)
