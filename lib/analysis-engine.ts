@@ -61,7 +61,7 @@ function parseCost(value: unknown) {
   return parsed
 }
 
-const CAUSE_KEYWORDS: Record<string, string[]> = {
+export const CAUSE_KEYWORDS: Record<string, string[]> = {
   "상판 휨": ["상판휨", "상판 휨", "상판변형", "상판뒤틀림"],
   "높이 조절 기능 이상": ["높이조절", "높이 조절", "업다운", "하강", "상승", "스트로크", "액추에이터"],
   "높이 조절 소음": ["높이조절소음", "높이조절 소음", "높이 조절 소음", "업다운소음", "업다운 소음", "상승소음", "하강소음", "승강소음", "승강 소음"],
@@ -328,7 +328,7 @@ export async function analyzeFile(file: File): Promise<AnalysisSummary> {
   }
 }
 
-function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
+export function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
   const map = new Map<string, MonthlyStat>()
 
   records.forEach((record) => {
@@ -368,7 +368,7 @@ function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
   return Array.from(map.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey))
 }
 
-function buildProductCauseMonthlyStats(records: DefectRecord[]): ProductCauseMonthlyStat[] {
+export function buildProductCauseMonthlyStats(records: DefectRecord[]): ProductCauseMonthlyStat[] {
   const map = new Map<string, ProductCauseMonthlyStat>()
 
   records.forEach((record) => {

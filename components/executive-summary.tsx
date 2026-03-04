@@ -18,6 +18,9 @@ import {
   MessageSquare
 } from "lucide-react"
 import { CommentSection } from "./comment-section"
+import { CAUSE_KEYWORDS } from "@/lib/analysis-engine"
+
+const CAUSE_OPTIONS = [...Object.keys(CAUSE_KEYWORDS), "기타"]
 
 type SelectedIncrease = {
   product: string
@@ -32,7 +35,7 @@ type SelectedBreakdownItem = {
 }
 
 export function ExecutiveSummary() {
-  const { summary, currentAnalysis } = useAnalysis()
+  const { summary, currentAnalysis, updateRecordCause } = useAnalysis()
   const [selectedIncrease, setSelectedIncrease] = useState<SelectedIncrease | null>(null)
   const [selectedBreakdownItem, setSelectedBreakdownItem] = useState<SelectedBreakdownItem | null>(null)
 
@@ -334,9 +337,20 @@ export function ExecutiveSummary() {
                             className="p-5 rounded-2xl bg-white border border-slate-100 hover:shadow-lg transition-all space-y-4"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black">
-                                #{idx + 1}
-                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black">
+                                  #{idx + 1}
+                                </span>
+                                <select
+                                  value={record.normalizedCause}
+                                  onChange={(e) => updateRecordCause(record.id, e.target.value)}
+                                  className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 hover:border-accent focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none cursor-pointer transition-colors"
+                                >
+                                  {CAUSE_OPTIONS.map(opt => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              </div>
                               {record.extraFields?.orderNo && (
                                 <span className="text-xs text-slate-400 font-medium">
                                   접수번호: {record.extraFields.orderNo}
@@ -489,9 +503,20 @@ export function ExecutiveSummary() {
                             className="p-5 rounded-2xl bg-white border border-slate-100 hover:shadow-lg transition-all space-y-4"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="px-3 py-1 rounded-lg bg-red-50 text-red-500 text-xs font-black">
-                                #{idx + 1}
-                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="px-3 py-1 rounded-lg bg-red-50 text-red-500 text-xs font-black">
+                                  #{idx + 1}
+                                </span>
+                                <select
+                                  value={record.normalizedCause}
+                                  onChange={(e) => updateRecordCause(record.id, e.target.value)}
+                                  className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 hover:border-accent focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none cursor-pointer transition-colors"
+                                >
+                                  {CAUSE_OPTIONS.map(opt => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              </div>
                               {record.extraFields?.orderNo && (
                                 <span className="text-xs text-slate-400 font-medium">
                                   접수번호: {record.extraFields.orderNo}

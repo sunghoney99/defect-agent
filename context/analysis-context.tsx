@@ -12,7 +12,7 @@ import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { AnalysisSummary, MonthlyStat, ProductCauseMonthlyStat, MonthlyTotal, DefectRecord } from "@/lib/types"
-import { analyzeFile, buildExecutiveReport } from "@/lib/analysis-engine"
+import { analyzeFile, buildExecutiveReport, buildMonthlyStats, buildProductCauseMonthlyStats } from "@/lib/analysis-engine"
 
 type UploadRecord = {
   _id: Id<"uploads">
@@ -31,6 +31,7 @@ type AnalysisContextValue = {
   setCurrentMonth: (monthKey: string) => void
   deleteUpload: (id: Id<"uploads">) => Promise<void>
   fetchUploads: () => void
+  updateRecordCause: (recordId: string, newCause: string) => void
   reset: () => void
   clearAnalysis: () => void
 }
@@ -328,6 +329,69 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     }
   }, [removeUpload, removeMonthlyAnalysis, uploads])
 
+  const updateRecordCause = useCallback((recordId: string, newCause: string) => {
+    if (!summary) return
+
+    // 1. Update the record's normalizedCause
+    const updatedRecords = summary.records.map(r =>
+      r.id === recordId ? { ...r, normalizedCause: newCause } : r
+    )
+
+    // 2. Recompute all statistics from updated records
+    const newMonthlyStats = buildMonthlyStats(updatedRecords)
+    const newProductCauseStats = buildProductCauseMonthlyStats(updatedRecords)
+    const newCategories = Array.from(new Set(updatedRecords.map(r => r.normalizedCause)))
+
+    // 3. Regenerate executive report
+    const latestMonthKey = currentAnalysis?.monthlyStats?.[currentAnalysis.monthlyStats.length - 1]?.monthKey
+    const newExecutiveReport = buildExecutiveReport(
+      newProductCauseStats,
+      summary.monthlyTotals,
+      updatedRecords,
+      latestMonthKey
+    )
+
+    // 4. Build updated summary
+    const updatedSummary: AnalysisSummary = {
+      ...summary,
+      records: updatedRecords,
+      monthlyStats: newMonthlyStats,
+      productCauseMonthlyStats: newProductCauseStats,
+      categories: newCategories,
+      executiveReport: newExecutiveReport
+    }
+
+    setSummary(updatedSummary)
+    setCurrentAnalysis({
+      ...updatedSummary,
+      monthlyStats: latestMonthKey
+        ? newMonthlyStats.slice(0, newMonthlyStats.findIndex(s => s.monthKey === latestMonthKey) + 1)
+        : newMonthlyStats,
+      executiveReport: newExecutiveReport
+    })
+    saveToStorage(updatedSummary)
+
+    // 5. Update Convex for the affected month
+    const changedRecord = updatedRecords.find(r => r.id === recordId)
+    if (changedRecord) {
+      const monthKey = changedRecord.monthKey
+      const monthRecords = updatedRecords.filter(r => r.monthKey === monthKey)
+      const monthStat = newMonthlyStats.find(s => s.monthKey === monthKey)
+      const monthProductCauseStats = newProductCauseStats.filter(s => s.monthKey === monthKey)
+      const monthTotal = summary.monthlyTotals.find(t => t.monthKey === monthKey)
+      if (monthStat && monthTotal) {
+        saveMonthlyAnalysis({
+          monthKey,
+          records: JSON.stringify(monthRecords),
+          monthlyStat: JSON.stringify(monthStat),
+          productCauseStats: JSON.stringify(monthProductCauseStats),
+          monthlyTotal: JSON.stringify(monthTotal),
+          categories: JSON.stringify(newCategories),
+        }).catch(e => console.error("Failed to save to Convex:", e))
+      }
+    }
+  }, [summary, currentAnalysis, saveMonthlyAnalysis])
+
   const reset = useCallback(() => {
     setSummary(null)
     setCurrentAnalysis(null)
@@ -349,6 +413,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     error,
     analyze,
     setCurrentMonth,
+    updateRecordCause,
     deleteUpload,
     fetchUploads,
     reset,
