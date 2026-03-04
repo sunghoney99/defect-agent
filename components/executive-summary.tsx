@@ -26,9 +26,15 @@ type SelectedIncrease = {
   currentCount: number
 }
 
+type SelectedBreakdownItem = {
+  product: string
+  judgementType: string
+}
+
 export function ExecutiveSummary() {
   const { summary, currentAnalysis } = useAnalysis()
   const [selectedIncrease, setSelectedIncrease] = useState<SelectedIncrease | null>(null)
+  const [selectedBreakdownItem, setSelectedBreakdownItem] = useState<SelectedBreakdownItem | null>(null)
 
   // Get target month key (must be calculated before useMemo to avoid conditional hook)
   const targetMonthKey = currentAnalysis?.monthlyStats?.[currentAnalysis.monthlyStats.length - 1]?.monthKey
@@ -42,6 +48,15 @@ export function ExecutiveSummary() {
       r.normalizedCause === selectedIncrease.normalizedCause
     )
   }, [selectedIncrease, summary, targetMonthKey])
+
+  // Get detailed records for selected breakdown item
+  const breakdownDetailRecords = useMemo(() => {
+    if (!selectedBreakdownItem || !summary || !targetMonthKey) return []
+    return summary.records.filter(r =>
+      r.monthKey === targetMonthKey &&
+      r.product === selectedBreakdownItem.product
+    )
+  }, [selectedBreakdownItem, summary, targetMonthKey])
 
   if (!currentAnalysis || !currentAnalysis.executiveReport || !summary) return null
   const report = currentAnalysis.executiveReport
@@ -202,53 +217,165 @@ export function ExecutiveSummary() {
 
           {/* Detailed Breakdown Section */}
           <div className="space-y-8">
-            <div className="flex items-center gap-2 px-1">
-              <Tag className="w-4 h-4 text-accent" />
-              <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">[품목별 특이사항 보고]</h3>
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <Tag className="w-4 h-4 text-accent" />
+                <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">[품목별 특이사항 보고]</h3>
+              </div>
+              {selectedBreakdownItem && (
+                <button
+                  onClick={() => setSelectedBreakdownItem(null)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase hover:bg-accent transition-all"
+                >
+                  <X className="w-3 h-3" />
+                  목록으로
+                </button>
+              )}
             </div>
-            <p className="text-[10px] text-slate-400 font-bold px-1 -mt-6 uppercase">* 월 5건 이상 발생 건만 집계</p>
+            {!selectedBreakdownItem && (
+              <p className="text-[10px] text-slate-400 font-bold px-1 -mt-6 uppercase">* 월 5건 이상 발생 건만 집계</p>
+            )}
 
             {breakdown.length === 0 ? (
               <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">분석된 특이사항이 없습니다 (5건 미만)</p>
               </div>
             ) : (
-              <div className="space-y-8 px-1">
-                {breakdown.map((group, idx) => (
-                  <div key={idx} className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <ChevronRight className="w-5 h-5 text-accent" />
-                      <h4 className="text-base font-black text-slate-800">▶ {group.judgementType}</h4>
+              <AnimatePresence mode="wait">
+                {!selectedBreakdownItem ? (
+                  <motion.div
+                    key="breakdown-list"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="space-y-8 px-1"
+                  >
+                    {breakdown.map((group, idx) => (
+                      <div key={idx} className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className="w-5 h-5 text-accent" />
+                          <h4 className="text-base font-black text-slate-800">▶ {group.judgementType}</h4>
+                        </div>
+
+                        <div className="grid gap-4 pl-7">
+                          {group.products.map((item, pIdx) => (
+                            <div
+                              key={pIdx}
+                              onClick={() => setSelectedBreakdownItem({ product: item.product, judgementType: group.judgementType })}
+                              className="p-4 rounded-2xl bg-white border border-slate-100 hover:border-accent/30 shadow-sm transition-all group/item cursor-pointer hover:shadow-lg"
+                            >
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center text-[10px] font-black text-slate-400 group-hover/item:bg-accent group-hover/item:text-white transition-colors">
+                                    {pIdx + 1}
+                                  </span>
+                                  <span className="text-sm font-black text-slate-800">{item.product}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-black text-accent">{item.count}건</span>
+                                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover/item:text-accent transition-colors" />
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                {item.reasons.map((r, rIdx) => (
+                                  <div key={rIdx} className="flex items-center gap-1">
+                                    <span className="text-xs font-medium text-slate-500">
+                                      {r.cause} <span className="text-accent font-black">{r.count}</span>
+                                    </span>
+                                    {rIdx < item.reasons.length - 1 && <span className="text-slate-300 mx-1">/</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100">
+                      <p className="text-[11px] text-amber-700/80 leading-relaxed font-medium">
+                        💡 품목을 클릭하면 해당 건의 요구내역 및 조치결과특이사항을 확인할 수 있습니다.
+                      </p>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="breakdown-detail"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="space-y-4"
+                  >
+                    {/* Selected Item Header */}
+                    <div className="p-4 rounded-2xl bg-accent/5 border border-accent/20 flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-black text-slate-800">{selectedBreakdownItem.product}</p>
+                        <p className="text-xs font-bold text-accent">{selectedBreakdownItem.judgementType}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-black text-accent">{breakdownDetailRecords.length}건</span>
+                      </div>
                     </div>
 
-                    <div className="grid gap-4 pl-7">
-                      {group.products.map((item, pIdx) => (
-                        <div key={pIdx} className="p-4 rounded-2xl bg-white border border-slate-100 hover:border-accent/30 shadow-sm transition-all group/item">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <span className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center text-[10px] font-black text-slate-400 group-hover/item:bg-accent group-hover/item:text-white transition-colors">
-                                {pIdx + 1}
-                              </span>
-                              <span className="text-sm font-black text-slate-800">{item.product}</span>
-                            </div>
-                            <span className="text-sm font-black text-accent">{item.count}건</span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            {item.reasons.map((r, rIdx) => (
-                              <div key={rIdx} className="flex items-center gap-1">
-                                <span className="text-xs font-medium text-slate-500">
-                                  {r.cause} <span className="text-accent font-black">{r.count}</span>
-                                </span>
-                                {rIdx < item.reasons.length - 1 && <span className="text-slate-300 mx-1">/</span>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                    {/* Detail Records */}
+                    <div className="text-xs font-bold text-slate-400 px-2 uppercase tracking-widest">
+                      당월 발생 건수: {breakdownDetailRecords.length}건
                     </div>
-                  </div>
-                ))}
-              </div>
+
+                    {breakdownDetailRecords.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <p className="text-sm text-slate-400 font-bold">상세 내역이 없습니다.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                        {breakdownDetailRecords.map((record, idx) => (
+                          <div
+                            key={record.id || idx}
+                            className="p-5 rounded-2xl bg-white border border-slate-100 hover:shadow-lg transition-all space-y-4"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black">
+                                #{idx + 1}
+                              </span>
+                              {record.extraFields?.orderNo && (
+                                <span className="text-xs text-slate-400 font-medium">
+                                  접수번호: {record.extraFields.orderNo}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* 요구내역 */}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-blue-500" />
+                                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">요구내역</span>
+                              </div>
+                              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                  {record.rawCauseFields?.requestText || "-"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* 조치결과특이사항 */}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-emerald-500" />
+                                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">조치결과특이사항</span>
+                              </div>
+                              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                  {record.rawCauseFields?.actionText || "-"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             )}
           </div>
 
