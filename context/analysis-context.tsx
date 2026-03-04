@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   useRef
 } from "react"
@@ -12,7 +13,24 @@ import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { AnalysisSummary, MonthlyStat, ProductCauseMonthlyStat, MonthlyTotal, DefectRecord } from "@/lib/types"
-import { analyzeFile, buildExecutiveReport, buildMonthlyStats, buildProductCauseMonthlyStats } from "@/lib/analysis-engine"
+import { analyzeFile, buildExecutiveReport, buildMonthlyStats, buildProductCauseMonthlyStats, CAUSE_KEYWORDS } from "@/lib/analysis-engine"
+
+const CUSTOM_KEYWORDS_KEY = "defect-agent-custom-keywords"
+
+function loadCustomKeywords(): string[] {
+  if (typeof window === "undefined") return []
+  try {
+    const stored = window.localStorage.getItem(CUSTOM_KEYWORDS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch { return [] }
+}
+
+function saveCustomKeywords(keywords: string[]) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(CUSTOM_KEYWORDS_KEY, JSON.stringify(keywords))
+  } catch {}
+}
 
 type UploadRecord = {
   _id: Id<"uploads">
@@ -32,6 +50,8 @@ type AnalysisContextValue = {
   deleteUpload: (id: Id<"uploads">) => Promise<void>
   fetchUploads: () => void
   updateRecordCause: (recordId: string, newCause: string) => void
+  causeOptions: string[]
+  addCustomKeyword: (keyword: string) => void
   reset: () => void
   clearAnalysis: () => void
 }
@@ -70,6 +90,26 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisSummary | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [customKeywords, setCustomKeywords] = useState<string[]>(() => loadCustomKeywords())
+
+  // Build unified cause options: base keywords + custom + "기타"
+  const causeOptions = useMemo(() => {
+    const base = Object.keys(CAUSE_KEYWORDS)
+    const all = new Set([...base, ...customKeywords])
+    all.add("기타")
+    return Array.from(all)
+  }, [customKeywords])
+
+  const addCustomKeyword = useCallback((keyword: string) => {
+    const trimmed = keyword.trim()
+    if (!trimmed) return
+    setCustomKeywords(prev => {
+      if (prev.includes(trimmed) || Object.keys(CAUSE_KEYWORDS).includes(trimmed) || trimmed === "기타") return prev
+      const updated = [...prev, trimmed]
+      saveCustomKeywords(updated)
+      return updated
+    })
+  }, [])
   const loadedFromConvex = useRef(false)
   const syncedToConvex = useRef(false)
 
@@ -414,6 +454,8 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     analyze,
     setCurrentMonth,
     updateRecordCause,
+    causeOptions,
+    addCustomKeyword,
     deleteUpload,
     fetchUploads,
     reset,

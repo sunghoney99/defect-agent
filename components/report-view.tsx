@@ -11,9 +11,7 @@ import {
 } from "./ui/card"
 import { ChevronRight, Box, Tag, ArrowLeft, FileText, MessageSquare } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { CAUSE_KEYWORDS } from "@/lib/analysis-engine"
-
-const CAUSE_OPTIONS = [...Object.keys(CAUSE_KEYWORDS), "기타"]
+import { CauseSelect } from "./cause-select"
 
 type CategoryRow = {
   category: string
@@ -27,7 +25,7 @@ type SelectedProduct = {
 }
 
 export function ReportView() {
-  const { currentAnalysis: summary, updateRecordCause } = useAnalysis()
+  const { currentAnalysis: summary } = useAnalysis()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<SelectedProduct | null>(null)
 
@@ -231,15 +229,7 @@ export function ReportView() {
                             <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black">
                               #{idx + 1}
                             </span>
-                            <select
-                              value={record.normalizedCause}
-                              onChange={(e) => updateRecordCause(record.id, e.target.value)}
-                              className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 hover:border-accent focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none cursor-pointer transition-colors"
-                            >
-                              {CAUSE_OPTIONS.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
+                            <CauseSelect value={record.normalizedCause} recordId={record.id} />
                           </div>
                           {record.extraFields?.orderNo && (
                             <span className="text-xs text-slate-400 font-medium">

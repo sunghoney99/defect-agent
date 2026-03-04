@@ -18,9 +18,7 @@ import {
   MessageSquare
 } from "lucide-react"
 import { CommentSection } from "./comment-section"
-import { CAUSE_KEYWORDS } from "@/lib/analysis-engine"
-
-const CAUSE_OPTIONS = [...Object.keys(CAUSE_KEYWORDS), "기타"]
+import { CauseSelect } from "./cause-select"
 
 type SelectedIncrease = {
   product: string
@@ -35,7 +33,7 @@ type SelectedBreakdownItem = {
 }
 
 export function ExecutiveSummary() {
-  const { summary, currentAnalysis, updateRecordCause } = useAnalysis()
+  const { summary, currentAnalysis } = useAnalysis()
   const [selectedIncrease, setSelectedIncrease] = useState<SelectedIncrease | null>(null)
   const [selectedBreakdownItem, setSelectedBreakdownItem] = useState<SelectedBreakdownItem | null>(null)
 
@@ -341,15 +339,7 @@ export function ExecutiveSummary() {
                                 <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black">
                                   #{idx + 1}
                                 </span>
-                                <select
-                                  value={record.normalizedCause}
-                                  onChange={(e) => updateRecordCause(record.id, e.target.value)}
-                                  className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 hover:border-accent focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none cursor-pointer transition-colors"
-                                >
-                                  {CAUSE_OPTIONS.map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
+                                <CauseSelect value={record.normalizedCause} recordId={record.id} />
                               </div>
                               {record.extraFields?.orderNo && (
                                 <span className="text-xs text-slate-400 font-medium">
@@ -507,15 +497,7 @@ export function ExecutiveSummary() {
                                 <span className="px-3 py-1 rounded-lg bg-red-50 text-red-500 text-xs font-black">
                                   #{idx + 1}
                                 </span>
-                                <select
-                                  value={record.normalizedCause}
-                                  onChange={(e) => updateRecordCause(record.id, e.target.value)}
-                                  className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 hover:border-accent focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none cursor-pointer transition-colors"
-                                >
-                                  {CAUSE_OPTIONS.map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
+                                <CauseSelect value={record.normalizedCause} recordId={record.id} />
                               </div>
                               {record.extraFields?.orderNo && (
                                 <span className="text-xs text-slate-400 font-medium">
