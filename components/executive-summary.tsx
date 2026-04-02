@@ -78,9 +78,12 @@ export function ExecutiveSummary() {
   // Get sales data from monthly totals
   const curSales = latestMonth?.monthlySales || 0
   const prevSales = prevMonth?.monthlySales || 0
-  const curSalesRatio = curSales > 0 ? (curCost / curSales) * 100 : 0
-  const prevSalesRatio = prevSales > 0 ? (prevCost / prevSales) * 100 : 0
-  const salesRatioDiff = curSalesRatio - prevSalesRatio
+  const curSalesRatioRaw = curSales > 0 ? (curCost / curSales) * 100 : 0
+  const prevSalesRatioRaw = prevSales > 0 ? (prevCost / prevSales) * 100 : 0
+  // Round to 1 decimal place first, then compute diff from rounded values to avoid display mismatch
+  const curSalesRatio = Math.round(curSalesRatioRaw * 10) / 10
+  const prevSalesRatio = Math.round(prevSalesRatioRaw * 10) / 10
+  const salesRatioDiff = Math.round((curSalesRatio - prevSalesRatio) * 10) / 10
 
   return (
     <div className="space-y-6">
@@ -132,12 +135,12 @@ export function ExecutiveSummary() {
                 <div className="flex items-center gap-3">
                   {salesRatioDiff > 0 ? <TrendingUp className="w-4 h-4 text-red-500" /> : salesRatioDiff < 0 ? <TrendingDown className="w-4 h-4 text-blue-500" /> : <Minus className="w-4 h-4 text-slate-400" />}
                   <p className="text-sm font-bold text-slate-700">
-                    매출 대비 하자보수비 비중은 <span className="text-accent font-black">{Math.round(curSalesRatio * 10) / 10}%</span>로,
+                    매출 대비 하자보수비 비중은 <span className="text-accent font-black">{curSalesRatio}%</span>로,
                     {prevSales > 0 ? (
                       <>
-                        {" "}전월(<span className="text-slate-500">{Math.round(prevSalesRatio * 10) / 10}%</span>) 대비{" "}
+                        {" "}전월(<span className="text-slate-500">{prevSalesRatio}%</span>) 대비{" "}
                         <span className={salesRatioDiff > 0 ? "text-red-500" : salesRatioDiff < 0 ? "text-blue-500" : "text-slate-500"}>
-                          {Math.abs(Math.round(salesRatioDiff * 10) / 10)}%p {salesRatioDiff > 0 ? "증가" : salesRatioDiff < 0 ? "감소" : "동일"}
+                          {Math.abs(salesRatioDiff)}%p {salesRatioDiff > 0 ? "증가" : salesRatioDiff < 0 ? "감소" : "동일"}
                         </span>하였습니다.
                       </>
                     ) : (
