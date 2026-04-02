@@ -104,7 +104,8 @@ export const CAUSE_KEYWORDS: Record<string, string[]> = {
   "메쉬 이탈": ["메쉬", "메쉬이탈", "메쉬 이탈", "망이탈"],
   "벌레 나옴": ["벌레", "벌레나옴", "해충", "벌레 나옴", "곤충"],
   "펠트 배선트레이 휨": ["펠트", "배선트레이", "펠트휨", "트레이휨", "배선트레이 휨"],
-  "이물질 삽입": ["이물질", "이물", "이물질삽입", "이물질 삽입"]
+  "이물질 삽입": ["이물질", "이물", "이물질삽입", "이물질 삽입"],
+  "목제 엣지 떨어짐": ["엣지떨어", "엣지 떨어", "엣지탈락", "엣지 탈락", "엣지벗겨", "엣지 벗겨", "엣지들뜸", "엣지 들뜸"]
 }
 
 export function extractKeywords(text: string, customRules?: Record<string, string[]>, deletedKeywords?: string[]): string {

@@ -54,6 +54,7 @@ function saveDeletedKeywords(keywords: string[]) {
 const CAUSE_MIGRATIONS: Record<string, string> = {
   "고주파음 불만": "스위치 소음",
   "목제 얼룩": "목제 오염",
+  "엣지 떨어짐": "목제 엣지 떨어짐",
 }
 
 function migrateRecordCauses(records: DefectRecord[]): { records: DefectRecord[]; changed: boolean } {
@@ -152,8 +153,10 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     const base = Object.keys(CAUSE_KEYWORDS)
     const all = new Set([...base, ...customKeywords])
     deletedKeywords.forEach(k => all.delete(k))
-    all.add("기타")
-    return Array.from(all)
+    all.delete("기타")
+    const sorted = Array.from(all).sort((a, b) => a.localeCompare(b, "ko"))
+    sorted.push("기타") // 기타는 항상 마지막
+    return sorted
   }, [customKeywords, deletedKeywords])
 
   const addCustomKeyword = useCallback((keyword: string) => {
