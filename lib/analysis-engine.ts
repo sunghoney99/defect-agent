@@ -65,7 +65,7 @@ export const CAUSE_KEYWORDS: Record<string, string[]> = {
   "상판 휨": ["상판휨", "상판 휨", "상판변형", "상판뒤틀림"],
   "높이 조절 기능 이상": ["높이조절", "높이 조절", "업다운", "하강", "상승", "스트로크", "액추에이터"],
   "높이 조절 소음": ["높이조절소음", "높이조절 소음", "높이 조절 소음", "업다운소음", "업다운 소음", "상승소음", "하강소음", "승강소음", "승강 소음"],
-  "고주파음 불만": ["고주파", "삐소리", "고주파음"],
+  "스위치 소음": ["고주파", "삐소리", "고주파음", "스위치소음", "스위치 소음"],
   "푸시레일 전선 늘어남": ["전선늘어남", "전선 늘어남", "배선간섭"],
   "푸시레일 이상": ["푸시레일", "푸시 레일", "조명레일", "조명 레일"],
   "서랍 레일 이상": ["서랍레일", "서랍 레일", "서랍인출", "서랍 인출", "레일불량", "레일파손", "레일 불량", "레일 파손"],
@@ -77,8 +77,7 @@ export const CAUSE_KEYWORDS: Record<string, string[]> = {
   "목제 도장 불량": ["도장", "도색", "칠부족", "표면거침", "도장불량", "목제 도장"],
   "목제 찍힘": ["찍힘", "목제찍힘", "목재찍힘"],
   "목제 파손": ["파손", "목제파손", "부러짐"],
-  "목제 얼룩": ["얼룩", "자국"],
-  "목제 오염": ["오염", "지저분"],
+  "목제 오염": ["얼룩", "자국", "오염", "지저분"],
   "모터 소음 불만": ["모터", "소음", "웅웅", "진동"],
   "스위치 기능 이상": ["스위치", "버튼", "컨트롤러"],
   "전원 불량": ["전원", "전원불량", "작동불가", "전기"],
@@ -108,10 +107,23 @@ export const CAUSE_KEYWORDS: Record<string, string[]> = {
   "이물질 삽입": ["이물질", "이물", "이물질삽입", "이물질 삽입"]
 }
 
-function extractKeywords(text: string): string {
+export function extractKeywords(text: string, customRules?: Record<string, string[]>, deletedKeywords?: string[]): string {
   if (!text) return "기타"
 
+  const deletedSet = deletedKeywords && deletedKeywords.length > 0 ? new Set(deletedKeywords) : null
+
+  // Custom rules (user-defined overrides) take priority
+  if (customRules) {
+    for (const [cause, keywords] of Object.entries(customRules)) {
+      if (deletedSet?.has(cause)) continue
+      if (keywords.some(k => text.includes(k))) {
+        return cause
+      }
+    }
+  }
+
   for (const [cause, keywords] of Object.entries(CAUSE_KEYWORDS)) {
+    if (deletedSet?.has(cause)) continue
     if (keywords.some(k => text.includes(k))) {
       return cause
     }
@@ -120,7 +132,18 @@ function extractKeywords(text: string): string {
   return "기타"
 }
 
-export async function analyzeFile(file: File): Promise<AnalysisSummary> {
+export function retagAllRecords(records: DefectRecord[], customRules: Record<string, string[]>, deletedKeywords?: string[]): DefectRecord[] {
+  return records.map(r => {
+    const text = `${r.rawCauseFields.requestText} ${r.rawCauseFields.actionText}`
+    const newCause = extractKeywords(text, customRules, deletedKeywords)
+    if (newCause !== r.normalizedCause) {
+      return { ...r, normalizedCause: newCause }
+    }
+    return r
+  })
+}
+
+export async function analyzeFile(file: File, customRules?: Record<string, string[]>, deletedKeywords?: string[]): Promise<AnalysisSummary> {
   const buffer = await file.arrayBuffer()
   const workbook = read(buffer, { type: "array" })
 
@@ -275,7 +298,7 @@ export async function analyzeFile(file: File): Promise<AnalysisSummary> {
           const cost = costIdx !== -1 ? parseCost(row[costIdx]) : 0
 
           const combinedText = `${requestText} ${actionText}`
-          const normalizedCause = extractKeywords(combinedText)
+          const normalizedCause = extractKeywords(combinedText, customRules, deletedKeywords)
 
           records.push({
             id: `${info.monthKey}-${rowIndex}`,

@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle
 } from "./ui/card"
-import { ChevronRight, Box, Tag, ArrowLeft, FileText, MessageSquare } from "lucide-react"
+import { ChevronRight, Box, Tag, ArrowLeft, FileText, MessageSquare, Trash2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { CauseSelect } from "./cause-select"
 
@@ -25,7 +25,7 @@ type SelectedProduct = {
 }
 
 export function ReportView() {
-  const { currentAnalysis: summary } = useAnalysis()
+  const { currentAnalysis: summary, deleteKeyword } = useAnalysis()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<SelectedProduct | null>(null)
 
@@ -125,19 +125,34 @@ export function ReportView() {
               {rows.map((row) => (
                 <div
                   key={row.category}
-                  onClick={() => setSelectedCategory(row.category)}
                   className="group cursor-pointer space-y-2"
                 >
                   <div className="flex items-end justify-between px-1">
-                    <div className="space-y-1">
+                    <div className="space-y-1" onClick={() => setSelectedCategory(row.category)}>
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-accent" />
                         <span className="text-sm font-black text-slate-700 group-hover:text-accent transition-colors">{row.category}</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-lg font-black text-slate-900">{row.count.toLocaleString()}</span>
-                      <span className="text-[10px] ml-1 text-slate-400 font-bold uppercase">건</span>
+                    <div className="flex items-center gap-3">
+                      {row.category !== "기타" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (confirm(`'${row.category}' 키워드를 삭제하시겠습니까?\n해당 키워드의 ${row.count}건이 '기타'로 이동됩니다.`)) {
+                              deleteKeyword(row.category)
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all"
+                          title="키워드 삭제"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <div className="text-right" onClick={() => setSelectedCategory(row.category)}>
+                        <span className="text-lg font-black text-slate-900">{row.count.toLocaleString()}</span>
+                        <span className="text-[10px] ml-1 text-slate-400 font-bold uppercase">건</span>
+                      </div>
                     </div>
                   </div>
                   <div className="h-4 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 p-0.5">

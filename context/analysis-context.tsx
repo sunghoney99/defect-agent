@@ -13,9 +13,60 @@ import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { AnalysisSummary, MonthlyStat, ProductCauseMonthlyStat, MonthlyTotal, DefectRecord } from "@/lib/types"
-import { analyzeFile, buildExecutiveReport, buildMonthlyStats, buildProductCauseMonthlyStats, CAUSE_KEYWORDS } from "@/lib/analysis-engine"
+import { analyzeFile, buildExecutiveReport, buildMonthlyStats, buildProductCauseMonthlyStats, retagAllRecords, CAUSE_KEYWORDS } from "@/lib/analysis-engine"
 
 const CUSTOM_KEYWORDS_KEY = "defect-agent-custom-keywords"
+const USER_KEYWORD_RULES_KEY = "defect-agent-user-keyword-rules"
+const DELETED_KEYWORDS_KEY = "defect-agent-deleted-keywords"
+
+function loadUserKeywordRules(): Record<string, string[]> {
+  if (typeof window === "undefined") return {}
+  try {
+    const stored = window.localStorage.getItem(USER_KEYWORD_RULES_KEY)
+    return stored ? JSON.parse(stored) : {}
+  } catch { return {} }
+}
+
+function saveUserKeywordRules(rules: Record<string, string[]>) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(USER_KEYWORD_RULES_KEY, JSON.stringify(rules))
+  } catch {}
+}
+
+function loadDeletedKeywords(): string[] {
+  if (typeof window === "undefined") return []
+  try {
+    const stored = window.localStorage.getItem(DELETED_KEYWORDS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch { return [] }
+}
+
+function saveDeletedKeywords(keywords: string[]) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(DELETED_KEYWORDS_KEY, JSON.stringify(keywords))
+  } catch {}
+}
+
+// Keyword rename migrations: old → new
+const CAUSE_MIGRATIONS: Record<string, string> = {
+  "고주파음 불만": "스위치 소음",
+  "목제 얼룩": "목제 오염",
+}
+
+function migrateRecordCauses(records: DefectRecord[]): { records: DefectRecord[]; changed: boolean } {
+  let changed = false
+  const migrated = records.map(r => {
+    const newCause = CAUSE_MIGRATIONS[r.normalizedCause]
+    if (newCause) {
+      changed = true
+      return { ...r, normalizedCause: newCause }
+    }
+    return r
+  })
+  return { records: migrated, changed }
+}
 
 function loadCustomKeywords(): string[] {
   if (typeof window === "undefined") return []
@@ -50,6 +101,7 @@ type AnalysisContextValue = {
   deleteUpload: (id: Id<"uploads">) => Promise<void>
   fetchUploads: () => void
   updateRecordCause: (recordId: string, newCause: string) => void
+  deleteKeyword: (keyword: string) => void
   causeOptions: string[]
   addCustomKeyword: (keyword: string) => void
   reset: () => void
@@ -91,14 +143,18 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [customKeywords, setCustomKeywords] = useState<string[]>(() => loadCustomKeywords())
+  const [userKeywordRules, setUserKeywordRules] = useState<Record<string, string[]>>(() => loadUserKeywordRules())
+  const [deletedKeywords, setDeletedKeywords] = useState<string[]>(() => loadDeletedKeywords())
 
   // Build unified cause options: base keywords + custom + "기타"
   const causeOptions = useMemo(() => {
     const base = Object.keys(CAUSE_KEYWORDS)
-    const all = new Set([...base, ...customKeywords])
+    const ruleKeys = Object.keys(userKeywordRules)
+    const all = new Set([...base, ...ruleKeys, ...customKeywords])
+    deletedKeywords.forEach(k => all.delete(k))
     all.add("기타")
     return Array.from(all)
-  }, [customKeywords])
+  }, [customKeywords, userKeywordRules, deletedKeywords])
 
   const addCustomKeyword = useCallback((keyword: string) => {
     const trimmed = keyword.trim()
@@ -150,6 +206,17 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
           categories.forEach(c => allCategories.add(c))
         }
 
+        // Apply keyword migrations to loaded records
+        const { records: migratedRecords, changed: migrationApplied } = migrateRecordCauses(allRecords)
+        allRecords = migratedRecords
+
+        // If migration was applied, recompute stats from migrated records
+        if (migrationApplied) {
+          allMonthlyStats = buildMonthlyStats(allRecords)
+          allProductCauseStats = buildProductCauseMonthlyStats(allRecords)
+          allCategories = new Set(allRecords.map(r => r.normalizedCause))
+        }
+
         allMonthlyStats.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
         allMonthlyTotals.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
         allProductCauseStats.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
@@ -170,6 +237,12 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         setCurrentAnalysis(reconstructed)
         saveToStorage(reconstructed)
         loadedFromConvex.current = true
+
+        // Persist migrated data back to Convex
+        if (migrationApplied) {
+          syncLocalStorageToConvex(reconstructed)
+        }
+
         return
       } catch (e) {
         console.error("Failed to load from Convex:", e)
@@ -221,7 +294,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     setIsAnalyzing(true)
     setError(null)
     try {
-      const result = await analyzeFile(file)
+      const result = await analyzeFile(file, userKeywordRules, deletedKeywords)
       const targetMonthKey = result.monthlyStats[result.monthlyStats.length - 1]?.monthKey
 
       // Merge with existing summary if it exists
@@ -322,7 +395,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     } finally {
       setIsAnalyzing(false)
     }
-  }, [createUpload, saveMonthlyAnalysis])
+  }, [createUpload, saveMonthlyAnalysis, userKeywordRules, deletedKeywords])
 
   const setCurrentMonth = useCallback((monthKey: string) => {
     if (!summary) {
@@ -372,17 +445,50 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const updateRecordCause = useCallback((recordId: string, newCause: string) => {
     if (!summary) return
 
-    // 1. Update the record's normalizedCause
-    const updatedRecords = summary.records.map(r =>
+    const record = summary.records.find(r => r.id === recordId)
+    if (!record || record.normalizedCause === newCause) return
+
+    const text = `${record.rawCauseFields.requestText} ${record.rawCauseFields.actionText}`
+
+    // 1. Derive updated custom keyword rules from this user correction
+    const updatedRules = { ...userKeywordRules }
+    const existingCustom = updatedRules[newCause] || []
+
+    // Find patterns from the new cause's default keywords that match this text
+    const defaultNewPatterns = CAUSE_KEYWORDS[newCause] || []
+    const matchingNew = defaultNewPatterns.filter(p => text.includes(p))
+
+    if (matchingNew.length > 0) {
+      // Existing patterns match → add to custom rules for higher priority
+      updatedRules[newCause] = Array.from(new Set([...existingCustom, ...matchingNew]))
+    } else {
+      // No existing patterns match → extract new patterns from record text
+      const allPatterns = new Set([
+        ...Object.values(CAUSE_KEYWORDS).flat(),
+        ...Object.values(updatedRules).flat()
+      ])
+      const words = text.split(/[\s,.\-()[\]{}]+/).filter(w => w.length >= 2 && !allPatterns.has(w))
+      if (words.length > 0) {
+        updatedRules[newCause] = Array.from(new Set([...existingCustom, ...words.slice(0, 5)]))
+      }
+    }
+
+    setUserKeywordRules(updatedRules)
+    saveUserKeywordRules(updatedRules)
+
+    // 2. Re-tag ALL records with updated rules
+    let updatedRecords = retagAllRecords(summary.records, updatedRules, deletedKeywords)
+
+    // Ensure the specific record always gets the user's chosen tag
+    updatedRecords = updatedRecords.map(r =>
       r.id === recordId ? { ...r, normalizedCause: newCause } : r
     )
 
-    // 2. Recompute all statistics from updated records
+    // 3. Recompute all statistics from updated records
     const newMonthlyStats = buildMonthlyStats(updatedRecords)
     const newProductCauseStats = buildProductCauseMonthlyStats(updatedRecords)
     const newCategories = Array.from(new Set(updatedRecords.map(r => r.normalizedCause)))
 
-    // 3. Regenerate executive report
     const latestMonthKey = currentAnalysis?.monthlyStats?.[currentAnalysis.monthlyStats.length - 1]?.monthKey
     const newExecutiveReport = buildExecutiveReport(
       newProductCauseStats,
@@ -411,10 +517,15 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     })
     saveToStorage(updatedSummary)
 
-    // 5. Update Convex for the affected month
-    const changedRecord = updatedRecords.find(r => r.id === recordId)
-    if (changedRecord) {
-      const monthKey = changedRecord.monthKey
+    // 5. Save all affected months to Convex
+    const changedMonthsSet = new Set<string>()
+    updatedRecords.forEach((r, i) => {
+      if (r.normalizedCause !== summary.records[i]?.normalizedCause) {
+        changedMonthsSet.add(r.monthKey)
+      }
+    })
+
+    for (const monthKey of Array.from(changedMonthsSet)) {
       const monthRecords = updatedRecords.filter(r => r.monthKey === monthKey)
       const monthStat = newMonthlyStats.find(s => s.monthKey === monthKey)
       const monthProductCauseStats = newProductCauseStats.filter(s => s.monthKey === monthKey)
@@ -430,7 +541,89 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         }).catch(e => console.error("Failed to save to Convex:", e))
       }
     }
-  }, [summary, currentAnalysis, saveMonthlyAnalysis])
+  }, [summary, currentAnalysis, userKeywordRules, deletedKeywords, saveMonthlyAnalysis])
+
+  const deleteKeyword = useCallback((keyword: string) => {
+    if (!summary || keyword === "기타") return
+
+    // 1. Add to deleted keywords list
+    const updatedDeleted = [...deletedKeywords, keyword]
+    setDeletedKeywords(updatedDeleted)
+    saveDeletedKeywords(updatedDeleted)
+
+    // Remove from custom keywords if present
+    setCustomKeywords(prev => {
+      const updated = prev.filter(k => k !== keyword)
+      saveCustomKeywords(updated)
+      return updated
+    })
+
+    // Remove from user keyword rules if present
+    const updatedRules = { ...userKeywordRules }
+    delete updatedRules[keyword]
+    setUserKeywordRules(updatedRules)
+    saveUserKeywordRules(updatedRules)
+
+    // 2. Re-tag all records: deleted keyword records will fall through to other matches or "기타"
+    const updatedRecords = retagAllRecords(summary.records, updatedRules, updatedDeleted)
+
+    // 3. Recompute all statistics
+    const newMonthlyStats = buildMonthlyStats(updatedRecords)
+    const newProductCauseStats = buildProductCauseMonthlyStats(updatedRecords)
+    const newCategories = Array.from(new Set(updatedRecords.map(r => r.normalizedCause)))
+
+    const latestMonthKey = currentAnalysis?.monthlyStats?.[currentAnalysis.monthlyStats.length - 1]?.monthKey
+    const newExecutiveReport = buildExecutiveReport(
+      newProductCauseStats,
+      summary.monthlyTotals,
+      updatedRecords,
+      latestMonthKey
+    )
+
+    const updatedSummary: AnalysisSummary = {
+      ...summary,
+      records: updatedRecords,
+      monthlyStats: newMonthlyStats,
+      productCauseMonthlyStats: newProductCauseStats,
+      categories: newCategories,
+      executiveReport: newExecutiveReport
+    }
+
+    setSummary(updatedSummary)
+    setCurrentAnalysis({
+      ...updatedSummary,
+      monthlyStats: latestMonthKey
+        ? newMonthlyStats.slice(0, newMonthlyStats.findIndex(s => s.monthKey === latestMonthKey) + 1)
+        : newMonthlyStats,
+      executiveReport: newExecutiveReport
+    })
+    saveToStorage(updatedSummary)
+
+    // 4. Save all affected months to Convex
+    const changedMonthsSet = new Set<string>()
+    updatedRecords.forEach((r, i) => {
+      if (r.normalizedCause !== summary.records[i]?.normalizedCause) {
+        changedMonthsSet.add(r.monthKey)
+      }
+    })
+
+    for (const monthKey of Array.from(changedMonthsSet)) {
+      const monthRecords = updatedRecords.filter(r => r.monthKey === monthKey)
+      const monthStat = newMonthlyStats.find(s => s.monthKey === monthKey)
+      const monthProductCauseStats = newProductCauseStats.filter(s => s.monthKey === monthKey)
+      const monthTotal = summary.monthlyTotals.find(t => t.monthKey === monthKey)
+      if (monthStat && monthTotal) {
+        saveMonthlyAnalysis({
+          monthKey,
+          records: JSON.stringify(monthRecords),
+          monthlyStat: JSON.stringify(monthStat),
+          productCauseStats: JSON.stringify(monthProductCauseStats),
+          monthlyTotal: JSON.stringify(monthTotal),
+          categories: JSON.stringify(newCategories),
+        }).catch(e => console.error("Failed to save to Convex:", e))
+      }
+    }
+  }, [summary, currentAnalysis, deletedKeywords, userKeywordRules, saveMonthlyAnalysis])
 
   const reset = useCallback(() => {
     setSummary(null)
@@ -454,6 +647,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     analyze,
     setCurrentMonth,
     updateRecordCause,
+    deleteKeyword,
     causeOptions,
     addCustomKeyword,
     deleteUpload,
