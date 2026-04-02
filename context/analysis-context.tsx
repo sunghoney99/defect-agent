@@ -153,6 +153,8 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     const base = Object.keys(CAUSE_KEYWORDS)
     const all = new Set([...base, ...customKeywords])
     deletedKeywords.forEach(k => all.delete(k))
+    // Remove migrated-from keywords (old names that were merged into new ones)
+    Object.keys(CAUSE_MIGRATIONS).forEach(k => all.delete(k))
     all.delete("기타")
     const sorted = Array.from(all).sort((a, b) => a.localeCompare(b, "ko"))
     sorted.push("기타") // 기타는 항상 마지막
@@ -200,12 +202,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
           allMonthlyTotals.push(monthlyTotal)
         }
 
-        // Apply keyword migrations
-        const { records: migratedRecords } = migrateRecordCauses(allRecords)
-        allRecords = migratedRecords
-
-        // Data recovery: retag ALL records from raw text using default CAUSE_KEYWORDS
-        // This fixes any corruption from the previous aggressive custom rules
+        // Step 1: Retag all records from raw text (data recovery from previous corruption)
         const storedOverrides = loadTextOverrides()
         const storedDeleted = loadDeletedKeywords()
         allRecords = allRecords.map(r => {
@@ -221,6 +218,10 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
           }
           return r
         })
+
+        // Step 2: Apply keyword migrations AFTER retagging (migrations take precedence)
+        const { records: migratedRecords } = migrateRecordCauses(allRecords)
+        allRecords = migratedRecords
 
         // Recompute stats from clean records
         const allMonthlyStats = buildMonthlyStats(allRecords)
