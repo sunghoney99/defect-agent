@@ -125,10 +125,11 @@ export function ReportView() {
               {rows.map((row) => (
                 <div
                   key={row.category}
+                  onClick={() => setSelectedCategory(row.category)}
                   className="group cursor-pointer space-y-2"
                 >
                   <div className="flex items-end justify-between px-1">
-                    <div className="space-y-1" onClick={() => setSelectedCategory(row.category)}>
+                    <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-accent" />
                         <span className="text-sm font-black text-slate-700 group-hover:text-accent transition-colors">{row.category}</span>
@@ -149,7 +150,7 @@ export function ReportView() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <div className="text-right" onClick={() => setSelectedCategory(row.category)}>
+                      <div className="text-right">
                         <span className="text-lg font-black text-slate-900">{row.count.toLocaleString()}</span>
                         <span className="text-[10px] ml-1 text-slate-400 font-bold uppercase">건</span>
                       </div>
