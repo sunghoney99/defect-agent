@@ -4,6 +4,7 @@ import { useAnalysis } from "@/context/analysis-context"
 import { ExecutiveSummary } from "./executive-summary"
 import { Dashboard } from "./dashboard"
 import { ReportView } from "./report-view"
+import { AiChat } from "./ai-chat"
 import { Loader2, AlertCircle, Upload } from "lucide-react"
 
 export function AnalysisResults() {
@@ -54,6 +55,7 @@ export function AnalysisResults() {
             <ExecutiveSummary />
             <Dashboard />
             <ReportView />
+            <AiChat />
         </div>
     )
 }

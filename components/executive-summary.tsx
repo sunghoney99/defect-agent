@@ -237,7 +237,7 @@ export function ExecutiveSummary() {
               )}
             </div>
             {!selectedBreakdownItem && (
-              <p className="text-[10px] text-slate-400 font-bold px-1 -mt-6 uppercase">* 월 5건 이상 발생 건만 집계</p>
+              <p className="text-[10px] text-slate-400 font-bold px-1 -mt-6 uppercase">* 판정형태 구분 없이 월 5건 이상 발생 품목만 집계</p>
             )}
 
             {breakdown.length === 0 ? (
@@ -404,6 +404,9 @@ export function ExecutiveSummary() {
                   </button>
                 )}
               </div>
+              {!selectedIncrease && (
+                <p className="text-[10px] text-slate-400 font-bold px-1 -mt-4 uppercase">* 세트교환요구 및 고객불만 건 기준으로 카운팅 (사양재검토, 영업지원 등 제외)</p>
+              )}
 
               <AnimatePresence mode="wait">
                 {!selectedIncrease ? (

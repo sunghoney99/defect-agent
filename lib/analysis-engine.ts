@@ -1,6 +1,7 @@
 import { read, utils } from "xlsx"
 import {
   AnalysisSummary,
+  AnalysisDebugInfo,
   DefectRecord,
   ExecutiveReport,
   InsightHighlight,
@@ -8,7 +9,8 @@ import {
   JudgementChange,
   MonthlyStat,
   MonthlyTotal,
-  ProductCauseMonthlyStat
+  ProductCauseMonthlyStat,
+  SheetDiagnostic
 } from "./types"
 
 type SheetInfo = {
@@ -20,12 +22,27 @@ type SheetInfo = {
 
 function normalizeHeader(value: unknown) {
   if (typeof value !== "string") return ""
-  return value.replace(/\s+/g, "").toLowerCase()
+  return value.normalize("NFC").replace(/\s+/g, "").toLowerCase()
+}
+
+function normalizeText(value: unknown): string {
+  if (value == null) return ""
+  return String(value).normalize("NFC")
 }
 
 function parseMonthFromSheetName(name: string): string | null {
   const match = name.match(/(\d{1,2})월/)
   if (match) return match[1]
+  return null
+}
+
+function parseMonthFromFileName(fileName: string): string | null {
+  // "5월", "05월" 패턴
+  const monthInName = fileName.match(/(\d{1,2})월/)
+  if (monthInName) return monthInName[1]
+  // "-05-", "_05_", "0526" 같은 날짜 패턴 (월만 추출)
+  const datePattern = fileName.match(/[-_](0?(\d{1,2}))[-_]/)
+  if (datePattern) return datePattern[2]
   return null
 }
 
@@ -144,12 +161,14 @@ export function retagAllRecords(records: DefectRecord[], customRules: Record<str
   })
 }
 
-export async function analyzeFile(file: File, customRules?: Record<string, string[]>, deletedKeywords?: string[]): Promise<AnalysisSummary> {
+export async function analyzeFile(file: File, customRules?: Record<string, string[]>, deletedKeywords?: string[]): Promise<AnalysisSummary & { debugInfo: AnalysisDebugInfo }> {
   const buffer = await file.arrayBuffer()
   const workbook = read(buffer, { type: "array" })
 
   // Extract year from filename (e.g., "하자보수비(브랜드)_25년09월.xlsx" → 2025)
   const fileYear = parseYearFromFileName(file.name)
+
+  let usedFallback = false
 
   // 1. Identify Sheets
   const sheetInfos: SheetInfo[] = []
@@ -170,8 +189,64 @@ export async function analyzeFile(file: File, customRules?: Record<string, strin
     }
   })
 
+  // 금액 시트는 잡혔지만 세부 시트가 없는 경우: "월" 없는 나머지 시트에서 세부 시트 탐색
+  for (const info of sheetInfos) {
+    if (!info.detailSheetName) {
+      const assignedSheets = new Set(
+        sheetInfos.flatMap(i => [i.amountSheetName, i.detailSheetName]).filter(Boolean)
+      )
+      const detailSheet = workbook.SheetNames.find(n => {
+        if (assignedSheets.has(n)) return false
+        const s = workbook.Sheets[n]
+        const r = utils.sheet_to_json(s, { header: 1 }) as any[][]
+        return r.length > 2
+      })
+      if (detailSheet) {
+        info.detailSheetName = detailSheet
+        console.warn(`[분석 경고] 세부 시트를 이름 없이 탐색해 자동 배정했습니다: "${detailSheet}" → ${info.monthKey}`)
+      }
+    }
+  }
+
+  // Fallback: 시트명에 "월"이 없으면 파일명에서 월을 추출해 전체 시트를 처리
+  if (sheetInfos.length === 0) {
+    const fileMonth = parseMonthFromFileName(file.name)
+    const month = fileMonth || String(new Date().getMonth() + 1)
+    const fallbackInfo: SheetInfo = {
+      month,
+      monthKey: toMonthKey(month, fileYear),
+      amountSheetName: null,
+      detailSheetName: null
+    }
+
+    // 금액 시트: "금액", "amount", "하자보수비금액" 포함 시트
+    const amountSheet = workbook.SheetNames.find(n =>
+      n.includes("금액") || n.toLowerCase().includes("amount") || n.replace(/\s/g, "").includes("하자보수비금액")
+    )
+    if (amountSheet) fallbackInfo.amountSheetName = amountSheet
+
+    // 세부 시트: 금액 시트를 제외한 첫 번째 시트 (단, 빈 시트 제외)
+    const detailSheet = workbook.SheetNames.find(n => {
+      if (n === amountSheet) return false
+      const s = workbook.Sheets[n]
+      const r = utils.sheet_to_json(s, { header: 1 }) as any[][]
+      return r.length > 2  // 헤더 + 데이터 최소 1행 이상
+    })
+    if (detailSheet) fallbackInfo.detailSheetName = detailSheet
+
+    if (fallbackInfo.amountSheetName || fallbackInfo.detailSheetName) {
+      sheetInfos.push(fallbackInfo)
+      usedFallback = true
+      console.warn(`[분석 경고] 시트명에서 월 정보를 찾지 못해 fallback 처리합니다. 파일명에서 추출한 월: ${month}, 사용할 시트: ${fallbackInfo.detailSheetName ?? "(없음)"}`)
+    } else {
+      usedFallback = true
+      console.error(`[분석 오류] 처리 가능한 시트를 찾지 못했습니다. 시트 목록: [${workbook.SheetNames.join(", ")}]`)
+    }
+  }
+
   const records: DefectRecord[] = []
   const monthlyTotals: MonthlyTotal[] = []
+  const diagnostics: SheetDiagnostic[] = []
 
   // 2. Process each month
   for (const info of sheetInfos) {
@@ -249,8 +324,15 @@ export async function analyzeFile(file: File, customRules?: Record<string, strin
         if (judgementFormIdx === -1) {
           judgementFormIdx = headers.findIndex(h => h.includes("판정형태") && !h.includes("판정구분"))
         }
+        // 추가 대체 컬럼명 탐색 (판정형태 미발견 시)
+        if (judgementFormIdx === -1) {
+          judgementFormIdx = headers.findIndex(h => h === "처리구분" || h === "구분" || h === "유형" || h === "판정")
+        }
         // If still not found, check for combined header but look for separate 판정구분
-        const judgementClassOnlyIdx = headers.findIndex(h => h === "판정구분")
+        let judgementClassOnlyIdx = headers.findIndex(h => h === "판정구분")
+        if (judgementClassOnlyIdx === -1) {
+          judgementClassOnlyIdx = headers.findIndex(h => h.includes("판정구분"))
+        }
 
         // If we have a combined header like "판정형태-판정구분", the actual values might be elsewhere
         // Try to use judgementClassOnlyIdx if judgementFormIdx gives numeric values
@@ -259,29 +341,68 @@ export async function analyzeFile(file: File, customRules?: Record<string, strin
         const orderNoIdx = headers.findIndex(h => h.includes("접수한번호") || h.includes("접수번호"))
         const partNameIdx = headers.findIndex(h => h.includes("부품명"))
         const productCodeIdx = headers.findIndex(h => h.includes("제품코드"))
-        const actionIdx = headers.findIndex(h => h.includes("조치결과특이사항"))
-        const requestIdx = headers.findIndex(h => h.includes("요구내역"))
-        const productIdx = headers.findIndex(h => h.includes("품목"))
+        // 조치결과특이사항: 컬럼명이 다를 경우를 위한 대체 검색
+        let actionIdx = headers.findIndex(h => h.includes("조치결과특이사항"))
+        if (actionIdx === -1) actionIdx = headers.findIndex(h => h.includes("조치결과"))
+        if (actionIdx === -1) actionIdx = headers.findIndex(h => h.includes("특이사항"))
+
+        // 요구내역: 컬럼명이 다를 경우를 위한 대체 검색
+        let requestIdx = headers.findIndex(h => h.includes("요구내역"))
+        if (requestIdx === -1) requestIdx = headers.findIndex(h => h.includes("요구사항"))
+        if (requestIdx === -1) requestIdx = headers.findIndex(h => h.includes("요청내역") || h.includes("요청내용"))
+        if (requestIdx === -1) requestIdx = headers.findIndex(h => h.includes("고객요구"))
+
+        // 품목: 컬럼명이 다를 경우를 위한 대체 검색
+        let productIdx = headers.findIndex(h => h.includes("품목"))
+        if (productIdx === -1) productIdx = headers.findIndex(h => h.includes("제품명") || h.includes("모델명"))
+        if (productIdx === -1) productIdx = headers.findIndex(h => h === "모델" || h.includes("상품명"))
 
         // Find cost index if it exists in detail sheet
         const costIdx = headers.findIndex(h => h.includes("금액") || h.includes("비용"))
 
+        // 필수 컬럼 누락 경고 (브라우저 콘솔에서 확인 가능)
+        if (actionIdx === -1) console.warn(`[분석 경고] '조치결과특이사항' 컬럼을 찾지 못했습니다. 감지된 헤더: [${headers.filter(Boolean).join(", ")}]`)
+        if (requestIdx === -1) console.warn(`[분석 경고] '요구내역' 컬럼을 찾지 못했습니다. 감지된 헤더: [${headers.filter(Boolean).join(", ")}]`)
+        if (productIdx === -1) console.warn(`[분석 경고] '품목' 컬럼을 찾지 못했습니다. 감지된 헤더: [${headers.filter(Boolean).join(", ")}]`)
+
+        // 진단 정보 수집 (UI에 표시)
+        const sheetDiagnostic: SheetDiagnostic = {
+          sheetName: info.detailSheetName!,
+          detectedColumns: {
+            action: actionIdx !== -1 ? headers[actionIdx] : null,
+            request: requestIdx !== -1 ? headers[requestIdx] : null,
+            product: productIdx !== -1 ? headers[productIdx] : null,
+          },
+          totalRows: rows.length - 1,
+          emptyTextRows: 0, // 나중에 업데이트
+          allHeaders: headers.filter(Boolean)
+        }
+        diagnostics.push(sheetDiagnostic)
+
         rows.slice(1).forEach((row, rowIndex) => {
           if (!row || row.length === 0) return
+          // 모든 셀이 비어있는 행 스킵
+          if (row.every(cell => cell === null || cell === undefined || cell === "")) return
 
           // Try multiple sources for judgement type
+          const KNOWN_JUDGEMENT_KEYWORDS = ["세트교환", "고객불만", "r&d", "사양재검토", "영업지원"]
+          const hasKnownKeyword = (s: string) => KNOWN_JUDGEMENT_KEYWORDS.some(k => s.toLowerCase().includes(k))
+
           let rawJudgement = ""
           if (judgementFormIdx !== -1) {
-            rawJudgement = String(row[judgementFormIdx] || "")
+            rawJudgement = normalizeText(row[judgementFormIdx])
           }
-          // If the value is numeric or empty, try judgementClassOnlyIdx
-          if ((!rawJudgement || /^\d+$/.test(rawJudgement)) && judgementClassOnlyIdx !== -1) {
-            rawJudgement = String(row[judgementClassOnlyIdx] || "")
+          // 판정형태 컬럼에 알려진 키워드가 없으면 판정구분 컬럼 시도
+          if (judgementClassOnlyIdx !== -1 && (!rawJudgement || /^\d+$/.test(rawJudgement) || !hasKnownKeyword(rawJudgement))) {
+            const classVal = normalizeText(row[judgementClassOnlyIdx])
+            if (classVal) rawJudgement = classVal
           }
-          // Also try scanning the row for known values
-          if (!rawJudgement || /^\d+$/.test(rawJudgement)) {
-            for (const cell of row) {
-              const cellStr = String(cell || "")
+          // 여전히 알려진 키워드가 없으면 구조적 컬럼만 스캔 (컨텐츠 컬럼 제외해 오탐 방지)
+          if (!rawJudgement || /^\d+$/.test(rawJudgement) || !hasKnownKeyword(rawJudgement)) {
+            const contentCols = new Set([actionIdx, requestIdx, productIdx, costIdx, partNameIdx, orderNoIdx, productCodeIdx].filter(i => i !== -1))
+            for (let ci = 0; ci < row.length; ci++) {
+              if (contentCols.has(ci)) continue
+              const cellStr = normalizeText(row[ci])
               if (cellStr.includes("세트교환") || cellStr.includes("고객불만") ||
                   cellStr.includes("R&D") || cellStr.includes("사양재검토") || cellStr.includes("영업지원")) {
                 rawJudgement = cellStr
@@ -293,13 +414,18 @@ export async function analyzeFile(file: File, customRules?: Record<string, strin
           let judgement = rawJudgement.trim()
           if (judgement.includes("세트교환")) judgement = "세트교환요구"
           if (judgement.includes("고객불만")) judgement = "고객불만"
-          const actionText = actionIdx !== -1 ? String(row[actionIdx] || "") : ""
-          const requestText = requestIdx !== -1 ? String(row[requestIdx] || "") : ""
-          const product = productIdx !== -1 ? String(row[productIdx] || "") : ""
+          if (judgement.toUpperCase().includes("R&D")) judgement = "R&D"
+          const actionText = actionIdx !== -1 ? normalizeText(row[actionIdx]) : ""
+          const requestText = requestIdx !== -1 ? normalizeText(row[requestIdx]) : ""
+          const product = productIdx !== -1 ? normalizeText(row[productIdx]) : ""
           const cost = costIdx !== -1 ? parseCost(row[costIdx]) : 0
 
           const combinedText = `${requestText} ${actionText}`
           const normalizedCause = extractKeywords(combinedText, customRules, deletedKeywords)
+
+          if (!requestText && !actionText) {
+            sheetDiagnostic.emptyTextRows++
+          }
 
           records.push({
             id: `${info.monthKey}-${rowIndex}`,
@@ -342,15 +468,41 @@ export async function analyzeFile(file: File, customRules?: Record<string, strin
     records
   )
 
+  const debugInfo: AnalysisDebugInfo = {
+    fileName: file.name,
+    allSheetNames: workbook.SheetNames,
+    detectedSheets: sheetInfos.map(i => ({
+      month: i.month,
+      monthKey: i.monthKey,
+      amountSheet: i.amountSheetName,
+      detailSheet: i.detailSheetName
+    })),
+    recordCount: records.length,
+    usedFallback
+  }
+
+  // 판정형태별 건수 로그 (파싱 결과 확인용)
+  const judgementCounts: Record<string, number> = {}
+  records.forEach(r => {
+    const jt = r.judgementType || "(빈값)"
+    judgementCounts[jt] = (judgementCounts[jt] || 0) + 1
+  })
+  console.log("[판정형태별 파싱 결과]", judgementCounts)
+  console.log("[분석 결과]", JSON.stringify(debugInfo, null, 2))
+
   return {
     records,
     monthlyStats,
     categories,
     productCauseMonthlyStats,
     monthlyTotals,
-    executiveReport
+    executiveReport,
+    diagnostics,
+    debugInfo
   }
 }
+
+const DEFECT_ANALYSIS_TYPES = new Set(["세트교환요구", "고객불만"])
 
 export function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
   const map = new Map<string, MonthlyStat>()
@@ -362,9 +514,10 @@ export function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
         monthKey: record.monthKey,
         totalCost: record.cost,
         totalCount: 1,
-        categoryBreakdown: {
-          [record.normalizedCause]: { count: 1, cost: record.cost }
-        },
+        // 세트교환요구/고객불만 건만 결함 유형 분석에 포함
+        categoryBreakdown: DEFECT_ANALYSIS_TYPES.has(record.judgementType)
+          ? { [record.normalizedCause]: { count: 1, cost: record.cost } }
+          : {},
         judgementCountBreakdown: {
           [record.judgementType || "기타"]: 1
         }
@@ -375,13 +528,15 @@ export function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
     existing.totalCount += 1
     existing.totalCost += record.cost
 
-    // Category Breakdown
-    const cause = record.normalizedCause
-    if (!existing.categoryBreakdown[cause]) {
-      existing.categoryBreakdown[cause] = { count: 1, cost: record.cost }
-    } else {
-      existing.categoryBreakdown[cause].count += 1
-      existing.categoryBreakdown[cause].cost += record.cost
+    // Category Breakdown (세트교환요구/고객불만 건만 결함 유형 분석에 포함)
+    if (DEFECT_ANALYSIS_TYPES.has(record.judgementType)) {
+      const cause = record.normalizedCause
+      if (!existing.categoryBreakdown[cause]) {
+        existing.categoryBreakdown[cause] = { count: 1, cost: record.cost }
+      } else {
+        existing.categoryBreakdown[cause].count += 1
+        existing.categoryBreakdown[cause].cost += record.cost
+      }
     }
 
     // Judgement Count Breakdown
@@ -395,7 +550,8 @@ export function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
 export function buildProductCauseMonthlyStats(records: DefectRecord[]): ProductCauseMonthlyStat[] {
   const map = new Map<string, ProductCauseMonthlyStat>()
 
-  records.forEach((record) => {
+  // 세트교환요구/고객불만 건만 집계 (사양재검토, 영업지원, R&D 등 제외)
+  records.filter(r => DEFECT_ANALYSIS_TYPES.has(r.judgementType)).forEach((record) => {
     const key = `${record.monthKey}|${record.product}|${record.normalizedCause}`
     const existing = map.get(key)
     if (!existing) {
@@ -518,12 +674,20 @@ function buildCostItemChanges(totals: MonthlyTotal[], months: string[]) {
 }
 
 function buildDetailedBreakdown(records: DefectRecord[], monthKey: string) {
-  const latestRecords = records.filter(r => r.monthKey === monthKey)
-  const judgementTypes = Array.from(new Set(latestRecords.map(r => r.judgementType || "기타")))
+  const allMonthRecords = records.filter(r => r.monthKey === monthKey)
+  // 판정형태가 있는 모든 레코드 포함 (영업지원, R&D, 사양재검토 등 모두 표시)
+  const latestRecords = allMonthRecords.filter(r => r.judgementType && r.judgementType.trim() !== "")
+
+  if (latestRecords.length === 0) return []
+
+  const judgementTypes = Array.from(new Set(latestRecords.map(r => r.judgementType.normalize("NFC").trim())))
 
   return judgementTypes.map(jt => {
-    const jtRecords = latestRecords.filter(r => (r.judgementType || "기타") === jt)
+    const jtRecords = latestRecords.filter(r => r.judgementType.normalize("NFC").trim() === jt)
     const products = Array.from(new Set(jtRecords.map(r => r.product)))
+
+    // 모든 판정형태 5건 이상 집계
+    const minCount = 5
 
     const productItems = products.map(p => {
       const pRecords = jtRecords.filter(r => r.product === p)
@@ -540,7 +704,7 @@ function buildDetailedBreakdown(records: DefectRecord[], monthKey: string) {
           .sort((a, b) => b.count - a.count)
       }
     })
-      .filter(item => item.count >= 5)
+      .filter(item => item.count >= minCount)
       .sort((a, b) => b.count - a.count)
 
     return {

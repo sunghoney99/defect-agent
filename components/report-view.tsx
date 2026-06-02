@@ -85,7 +85,7 @@ export function ReportView() {
   const getDescription = () => {
     if (selectedProduct) return "해당 품목의 조치결과특이사항 및 요구내역입니다."
     if (selectedCategory) return "선택한 카테고리의 품목별 발생 비중입니다. 품목을 클릭하면 상세 내역을 확인할 수 있습니다."
-    return "발생 건수가 높은 주요 결함 유형 분포입니다."
+    return "발생 건수가 높은 주요 결함 유형 분포입니다. (세트교환요구 및 고객불만 건 기준 카운팅)"
   }
 
   return (
@@ -122,6 +122,7 @@ export function ReportView() {
               exit={{ opacity: 0, scale: 1.05 }}
               className="space-y-5"
             >
+              <p className="text-[10px] text-slate-400 font-bold px-1 uppercase">* 세트교환요구 및 고객불만 건 기준으로 카운팅 (사양재검토, 영업지원 등 제외)</p>
               {rows.map((row) => (
                 <div
                   key={row.category}

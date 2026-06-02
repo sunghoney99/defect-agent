@@ -12,7 +12,7 @@ import {
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
-import { AnalysisSummary, MonthlyStat, ProductCauseMonthlyStat, MonthlyTotal, DefectRecord } from "@/lib/types"
+import { AnalysisSummary, AnalysisDebugInfo, MonthlyStat, ProductCauseMonthlyStat, MonthlyTotal, DefectRecord, SheetDiagnostic } from "@/lib/types"
 import { analyzeFile, buildExecutiveReport, buildMonthlyStats, buildProductCauseMonthlyStats, retagAllRecords, extractKeywords, CAUSE_KEYWORDS } from "@/lib/analysis-engine"
 
 const CUSTOM_KEYWORDS_KEY = "defect-agent-custom-keywords"
@@ -98,6 +98,8 @@ type AnalysisContextValue = {
   uploads: UploadRecord[]
   isAnalyzing: boolean
   error: string | null
+  lastDiagnostics: SheetDiagnostic[] | null
+  lastDebugInfo: AnalysisDebugInfo | null
   analyze: (file: File) => Promise<void>
   setCurrentMonth: (monthKey: string) => void
   deleteUpload: (id: Id<"uploads">) => Promise<void>
@@ -144,6 +146,8 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisSummary | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastDiagnostics, setLastDiagnostics] = useState<SheetDiagnostic[] | null>(null)
+  const [lastDebugInfo, setLastDebugInfo] = useState<AnalysisDebugInfo | null>(null)
   const [customKeywords, setCustomKeywords] = useState<string[]>(() => loadCustomKeywords())
   const [textOverrides, setTextOverrides] = useState<Record<string, string>>(() => loadTextOverrides())
   const [deletedKeywords, setDeletedKeywords] = useState<string[]>(() => loadDeletedKeywords())
@@ -206,15 +210,39 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         const storedOverrides = loadTextOverrides()
         const storedDeleted = loadDeletedKeywords()
         allRecords = allRecords.map(r => {
+          // NFC 정규화: 이전에 저장된 NFD 한글을 교정
           const text = `${r.rawCauseFields.requestText} ${r.rawCauseFields.actionText}`
+          // judgementType NFC 정규화 및 표준화
+          let judgementType = (r.judgementType || "").normalize("NFC").trim()
+          if (judgementType.includes("세트교환")) judgementType = "세트교환요구"
+          else if (judgementType.includes("고객불만")) judgementType = "고객불만"
+          else if (judgementType.toUpperCase().includes("R&D")) judgementType = "R&D"
+          else if (judgementType.includes("사양재검토")) judgementType = "사양재검토"
+          else if (judgementType.includes("영업지원")) judgementType = "영업지원"
+          // judgementType이 미인식 상태이면 extraFields의 raw 값들로 재시도
+          const KNOWN_JT = new Set(["세트교환요구", "고객불만", "R&D", "사양재검토", "영업지원"])
+          if (!KNOWN_JT.has(judgementType)) {
+            const candidates = [
+              (r.extraFields?.judgementForm || "").normalize("NFC").trim(),
+              (r.extraFields?.judgementClass || "").normalize("NFC").trim(),
+            ]
+            for (const raw of candidates) {
+              if (!raw) continue
+              if (raw.includes("세트교환")) { judgementType = "세트교환요구"; break }
+              else if (raw.includes("고객불만")) { judgementType = "고객불만"; break }
+              else if (raw.toUpperCase().includes("R&D")) { judgementType = "R&D"; break }
+              else if (raw.includes("사양재검토")) { judgementType = "사양재검토"; break }
+              else if (raw.includes("영업지원")) { judgementType = "영업지원"; break }
+            }
+          }
           // Check exact text overrides first
           if (storedOverrides[text]) {
-            return { ...r, normalizedCause: storedOverrides[text] }
+            return { ...r, judgementType, normalizedCause: storedOverrides[text] }
           }
           // Re-extract from raw text using defaults only
           const freshCause = extractKeywords(text, undefined, storedDeleted)
-          if (freshCause !== r.normalizedCause) {
-            return { ...r, normalizedCause: freshCause }
+          if (freshCause !== r.normalizedCause || judgementType !== r.judgementType) {
+            return { ...r, judgementType, normalizedCause: freshCause }
           }
           return r
         })
@@ -302,8 +330,26 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const analyze = useCallback(async (file: File) => {
     setIsAnalyzing(true)
     setError(null)
+    setLastDiagnostics(null)
+    setLastDebugInfo(null)
     try {
       const result = await analyzeFile(file, undefined, deletedKeywords)
+
+      // 디버그 정보 저장 (항상 표시)
+      if (result.debugInfo) {
+        setLastDebugInfo(result.debugInfo)
+      }
+
+      // 진단 정보 저장 (컬럼 감지 결과를 UI에 표시)
+      if (result.diagnostics && result.diagnostics.length > 0) {
+        setLastDiagnostics(result.diagnostics)
+      }
+
+      // 파싱된 레코드가 없으면 사용자에게 경고
+      if (result.records.length === 0) {
+        setError(`엑셀에서 데이터를 읽지 못했습니다. 시트명에 "5월", "3월" 처럼 월(月) 숫자가 포함되어 있는지 확인해주세요. 현재 시트 목록을 브라우저 콘솔(F12)에서 확인할 수 있습니다.`)
+        return
+      }
 
       // Apply text overrides to newly analyzed records
       const overriddenRecords = result.records.map(r => {
@@ -671,6 +717,8 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     uploads,
     isAnalyzing,
     error,
+    lastDiagnostics,
+    lastDebugInfo,
     analyze,
     setCurrentMonth,
     updateRecordCause,

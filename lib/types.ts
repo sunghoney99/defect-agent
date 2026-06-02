@@ -113,6 +113,31 @@ export type ExecutiveReport = {
   }[]
 }
 
+export type SheetDiagnostic = {
+  sheetName: string
+  detectedColumns: {
+    action: string | null   // 조치결과특이사항
+    request: string | null  // 요구내역
+    product: string | null  // 품목
+  }
+  totalRows: number
+  emptyTextRows: number
+  allHeaders: string[]
+}
+
+export type AnalysisDebugInfo = {
+  fileName: string
+  allSheetNames: string[]
+  detectedSheets: {
+    month: string
+    monthKey: string
+    amountSheet: string | null
+    detailSheet: string | null
+  }[]
+  recordCount: number
+  usedFallback: boolean
+}
+
 export type AnalysisSummary = {
   records: DefectRecord[]
   monthlyStats: MonthlyStat[]
@@ -120,4 +145,5 @@ export type AnalysisSummary = {
   productCauseMonthlyStats: ProductCauseMonthlyStat[]
   monthlyTotals: MonthlyTotal[]
   executiveReport: ExecutiveReport | null
+  diagnostics?: SheetDiagnostic[]
 }
