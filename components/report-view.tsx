@@ -12,6 +12,7 @@ import {
 import { ChevronRight, Box, Tag, ArrowLeft, FileText, MessageSquare, Trash2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { CauseSelect } from "./cause-select"
+import { JudgementTypeSelect } from "./judgement-type-select"
 
 type CategoryRow = {
   category: string
@@ -241,12 +242,13 @@ export function ReportView() {
                         key={record.id || idx}
                         className="p-6 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-white hover:shadow-lg transition-all space-y-4"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black">
                               #{idx + 1}
                             </span>
                             <CauseSelect value={record.normalizedCause} recordId={record.id} />
+                            <JudgementTypeSelect value={record.judgementType} recordId={record.id} />
                           </div>
                           {record.extraFields?.orderNo && (
                             <span className="text-xs text-slate-400 font-medium">

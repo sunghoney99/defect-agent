@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 
 export function NewAnalysisZone() {
-    const { analyze, isAnalyzing, error, currentAnalysis, clearAnalysis } = useAnalysis()
+    const { analyze, isAnalyzing, error, currentAnalysis, clearAnalysis, lastDiagnostics } = useAnalysis()
     const [isDragging, setIsDragging] = useState(false)
     const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -150,6 +150,56 @@ export function NewAnalysisZone() {
                     )}
                 </AnimatePresence>
             </div>
+
+            {/* 컬럼 감지 진단 패널 */}
+            <AnimatePresence>
+                {lastDiagnostics && lastDiagnostics.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="mt-4 space-y-3"
+                    >
+                        {lastDiagnostics.map((diag, i) => {
+                            const hasMissingCol = !diag.detectedColumns.action || !diag.detectedColumns.request || !diag.detectedColumns.product
+                            const emptyRatio = diag.totalRows > 0 ? diag.emptyTextRows / diag.totalRows : 0
+                            const hasEmptyIssue = emptyRatio > 0.5
+                            if (!hasMissingCol && !hasEmptyIssue) return null
+                            return (
+                                <div key={i} className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
+                                    <p className="text-xs font-black text-amber-800 uppercase tracking-widest">
+                                        ⚠️ 컬럼 감지 이슈: {diag.sheetName}
+                                    </p>
+                                    <div className="grid grid-cols-3 gap-2 text-[11px]">
+                                        <div className={`p-2 rounded-lg ${diag.detectedColumns.action ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'} font-bold`}>
+                                            조치결과특이사항<br/>
+                                            <span className="font-black">{diag.detectedColumns.action ?? '❌ 미감지'}</span>
+                                        </div>
+                                        <div className={`p-2 rounded-lg ${diag.detectedColumns.request ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'} font-bold`}>
+                                            요구내역<br/>
+                                            <span className="font-black">{diag.detectedColumns.request ?? '❌ 미감지'}</span>
+                                        </div>
+                                        <div className={`p-2 rounded-lg ${diag.detectedColumns.product ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'} font-bold`}>
+                                            품목<br/>
+                                            <span className="font-black">{diag.detectedColumns.product ?? '❌ 미감지'}</span>
+                                        </div>
+                                    </div>
+                                    {hasEmptyIssue && (
+                                        <p className="text-[11px] text-amber-700 font-bold">
+                                            * {diag.totalRows}건 중 {diag.emptyTextRows}건({Math.round(emptyRatio * 100)}%)의 텍스트 필드가 비어 있습니다.
+                                        </p>
+                                    )}
+                                    <details className="text-[10px] text-amber-600">
+                                        <summary className="cursor-pointer font-bold">감지된 전체 컬럼명 보기</summary>
+                                        <p className="mt-1 break-all font-mono">{diag.allHeaders.join(" / ")}</p>
+                                    </details>
+                                </div>
+                            )
+                        })}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Template Guide Section */}
             <div className="mt-8 p-6 bg-slate-50 border border-slate-200 rounded-[2.5rem] space-y-5">
                 <div className="flex items-center justify-between px-1">

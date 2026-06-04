@@ -18,6 +18,29 @@ import { analyzeFile, buildExecutiveReport, buildMonthlyStats, buildProductCause
 const CUSTOM_KEYWORDS_KEY = "defect-agent-custom-keywords"
 const TEXT_OVERRIDES_KEY = "defect-agent-text-overrides"
 const DELETED_KEYWORDS_KEY = "defect-agent-deleted-keywords"
+const JUDGEMENT_OVERRIDES_KEY = "defect-agent-judgement-overrides"
+
+// 접수번호 기반 판정형태 수동 보정값 (초기값으로 알려진 오분류 건 수정)
+const INITIAL_JUDGEMENT_OVERRIDES: Record<string, string> = {
+  "I202605140036": "영업지원",
+  "I202605130228": "영업지원",
+}
+
+function loadJudgementOverrides(): Record<string, string> {
+  if (typeof window === "undefined") return { ...INITIAL_JUDGEMENT_OVERRIDES }
+  try {
+    const stored = window.localStorage.getItem(JUDGEMENT_OVERRIDES_KEY)
+    const saved = stored ? JSON.parse(stored) : {}
+    return { ...INITIAL_JUDGEMENT_OVERRIDES, ...saved }
+  } catch { return { ...INITIAL_JUDGEMENT_OVERRIDES } }
+}
+
+function saveJudgementOverrides(overrides: Record<string, string>) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(JUDGEMENT_OVERRIDES_KEY, JSON.stringify(overrides))
+  } catch {}
+}
 
 // Text overrides: exact text → cause mapping (safe, only affects identical descriptions)
 function loadTextOverrides(): Record<string, string> {
@@ -105,6 +128,7 @@ type AnalysisContextValue = {
   deleteUpload: (id: Id<"uploads">) => Promise<void>
   fetchUploads: () => void
   updateRecordCause: (recordId: string, newCause: string) => void
+  updateRecordJudgementType: (recordId: string, newJudgementType: string) => void
   deleteKeyword: (keyword: string) => void
   causeOptions: string[]
   addCustomKeyword: (keyword: string) => void
@@ -151,6 +175,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
   const [customKeywords, setCustomKeywords] = useState<string[]>(() => loadCustomKeywords())
   const [textOverrides, setTextOverrides] = useState<Record<string, string>>(() => loadTextOverrides())
   const [deletedKeywords, setDeletedKeywords] = useState<string[]>(() => loadDeletedKeywords())
+  const [judgementOverrides, setJudgementOverrides] = useState<Record<string, string>>(() => loadJudgementOverrides())
 
   // Build unified cause options: base keywords + custom + "기타"
   const causeOptions = useMemo(() => {
@@ -209,6 +234,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         // Step 1: Retag all records from raw text (data recovery from previous corruption)
         const storedOverrides = loadTextOverrides()
         const storedDeleted = loadDeletedKeywords()
+        const storedJudgementOverrides = loadJudgementOverrides()
         allRecords = allRecords.map(r => {
           // NFC 정규화: 이전에 저장된 NFD 한글을 교정
           const text = `${r.rawCauseFields.requestText} ${r.rawCauseFields.actionText}`
@@ -235,6 +261,12 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
               else if (raw.includes("영업지원")) { judgementType = "영업지원"; break }
             }
           }
+          // 접수번호 기반 판정형태 수동 보정 적용
+          const orderNo = (r.extraFields?.orderNo || "").trim()
+          if (orderNo && storedJudgementOverrides[orderNo]) {
+            judgementType = storedJudgementOverrides[orderNo]
+          }
+
           // Check exact text overrides first
           if (storedOverrides[text]) {
             return { ...r, judgementType, normalizedCause: storedOverrides[text] }
@@ -351,18 +383,27 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
         return
       }
 
-      // Apply text overrides to newly analyzed records
+      // Apply text overrides and judgementType overrides to newly analyzed records
       const overriddenRecords = result.records.map(r => {
         const text = `${r.rawCauseFields.requestText} ${r.rawCauseFields.actionText}`
-        const override = textOverrides[text]
-        if (override) {
-          return { ...r, normalizedCause: override }
+        const causeOverride = textOverrides[text]
+        const orderNo = (r.extraFields?.orderNo || "").trim()
+        const jtOverride = orderNo ? judgementOverrides[orderNo] : undefined
+        if (causeOverride || jtOverride) {
+          return {
+            ...r,
+            ...(causeOverride ? { normalizedCause: causeOverride } : {}),
+            ...(jtOverride ? { judgementType: jtOverride } : {}),
+          }
         }
         return r
       })
 
       // Recompute if any overrides were applied
-      const hasOverrides = overriddenRecords.some((r, i) => r.normalizedCause !== result.records[i].normalizedCause)
+      const hasOverrides = overriddenRecords.some((r, i) =>
+        r.normalizedCause !== result.records[i].normalizedCause ||
+        r.judgementType !== result.records[i].judgementType
+      )
       let finalResult = result
       if (hasOverrides) {
         const newMonthlyStats = buildMonthlyStats(overriddenRecords)
@@ -480,7 +521,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     } finally {
       setIsAnalyzing(false)
     }
-  }, [createUpload, saveMonthlyAnalysis, textOverrides, deletedKeywords])
+  }, [createUpload, saveMonthlyAnalysis, textOverrides, deletedKeywords, judgementOverrides])
 
   const setCurrentMonth = useCallback((monthKey: string) => {
     if (!summary) {
@@ -604,6 +645,87 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     }
   }, [summary, currentAnalysis, textOverrides, saveMonthlyAnalysis])
 
+  const updateRecordJudgementType = useCallback((recordId: string, newJudgementType: string) => {
+    if (!summary) return
+
+    const record = summary.records.find(r => r.id === recordId)
+    if (!record || record.judgementType === newJudgementType) return
+
+    const orderNo = (record.extraFields?.orderNo || "").trim()
+
+    // 접수번호가 있으면 localStorage에 보정값 저장
+    if (orderNo) {
+      const updatedOverrides = { ...judgementOverrides, [orderNo]: newJudgementType }
+      setJudgementOverrides(updatedOverrides)
+      saveJudgementOverrides(updatedOverrides)
+    }
+
+    // 동일 접수번호를 가진 모든 레코드 함께 변경
+    const updatedRecords = summary.records.map(r => {
+      if (r.id === recordId) return { ...r, judgementType: newJudgementType }
+      if (orderNo && (r.extraFields?.orderNo || "").trim() === orderNo) {
+        return { ...r, judgementType: newJudgementType }
+      }
+      return r
+    })
+
+    const newMonthlyStats = buildMonthlyStats(updatedRecords)
+    const newProductCauseStats = buildProductCauseMonthlyStats(updatedRecords)
+    const newCategories = Array.from(new Set(updatedRecords.map(r => r.normalizedCause)))
+
+    const latestMonthKey = currentAnalysis?.monthlyStats?.[currentAnalysis.monthlyStats.length - 1]?.monthKey
+    const newExecutiveReport = buildExecutiveReport(
+      newProductCauseStats,
+      summary.monthlyTotals,
+      updatedRecords,
+      latestMonthKey
+    )
+
+    const updatedSummary: AnalysisSummary = {
+      ...summary,
+      records: updatedRecords,
+      monthlyStats: newMonthlyStats,
+      productCauseMonthlyStats: newProductCauseStats,
+      categories: newCategories,
+      executiveReport: newExecutiveReport
+    }
+
+    setSummary(updatedSummary)
+    setCurrentAnalysis({
+      ...updatedSummary,
+      monthlyStats: latestMonthKey
+        ? newMonthlyStats.slice(0, newMonthlyStats.findIndex(s => s.monthKey === latestMonthKey) + 1)
+        : newMonthlyStats,
+      executiveReport: newExecutiveReport
+    })
+    saveToStorage(updatedSummary)
+
+    // 변경된 월만 Convex에 저장
+    const changedMonthsSet = new Set<string>()
+    updatedRecords.forEach((r, i) => {
+      if (r.judgementType !== summary.records[i]?.judgementType) {
+        changedMonthsSet.add(r.monthKey)
+      }
+    })
+
+    for (const monthKey of Array.from(changedMonthsSet)) {
+      const monthRecords = updatedRecords.filter(r => r.monthKey === monthKey)
+      const monthStat = newMonthlyStats.find(s => s.monthKey === monthKey)
+      const monthProductCauseStats = newProductCauseStats.filter(s => s.monthKey === monthKey)
+      const monthTotal = summary.monthlyTotals.find(t => t.monthKey === monthKey)
+      if (monthStat && monthTotal) {
+        saveMonthlyAnalysis({
+          monthKey,
+          records: JSON.stringify(monthRecords),
+          monthlyStat: JSON.stringify(monthStat),
+          productCauseStats: JSON.stringify(monthProductCauseStats),
+          monthlyTotal: JSON.stringify(monthTotal),
+          categories: JSON.stringify(newCategories),
+        }).catch(e => console.error("Failed to save to Convex:", e))
+      }
+    }
+  }, [summary, currentAnalysis, judgementOverrides, saveMonthlyAnalysis])
+
   const deleteKeyword = useCallback((keyword: string) => {
     if (!summary || keyword === "기타") return
 
@@ -722,6 +844,7 @@ export function AnalysisProvider(props: { children: React.ReactNode }) {
     analyze,
     setCurrentMonth,
     updateRecordCause,
+    updateRecordJudgementType,
     deleteKeyword,
     causeOptions,
     addCustomKeyword,

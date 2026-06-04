@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { CommentSection } from "./comment-section"
 import { CauseSelect } from "./cause-select"
+import { JudgementTypeSelect } from "./judgement-type-select"
 
 type SelectedIncrease = {
   product: string
@@ -50,12 +51,13 @@ export function ExecutiveSummary() {
     )
   }, [selectedIncrease, summary, targetMonthKey])
 
-  // Get detailed records for selected breakdown item
+  // Get detailed records for selected breakdown item (판정형태별 필터링)
   const breakdownDetailRecords = useMemo(() => {
     if (!selectedBreakdownItem || !summary || !targetMonthKey) return []
     return summary.records.filter(r =>
       r.monthKey === targetMonthKey &&
-      r.product === selectedBreakdownItem.product
+      r.product === selectedBreakdownItem.product &&
+      r.judgementType === selectedBreakdownItem.judgementType
     )
   }, [selectedBreakdownItem, summary, targetMonthKey])
 
@@ -337,12 +339,13 @@ export function ExecutiveSummary() {
                             key={record.id || idx}
                             className="p-5 rounded-2xl bg-white border border-slate-100 hover:shadow-lg transition-all space-y-4"
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black">
                                   #{idx + 1}
                                 </span>
                                 <CauseSelect value={record.normalizedCause} recordId={record.id} />
+                                <JudgementTypeSelect value={record.judgementType} recordId={record.id} />
                               </div>
                               {record.extraFields?.orderNo && (
                                 <span className="text-xs text-slate-400 font-medium">
@@ -498,12 +501,13 @@ export function ExecutiveSummary() {
                             key={record.id || idx}
                             className="p-5 rounded-2xl bg-white border border-slate-100 hover:shadow-lg transition-all space-y-4"
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="px-3 py-1 rounded-lg bg-red-50 text-red-500 text-xs font-black">
                                   #{idx + 1}
                                 </span>
                                 <CauseSelect value={record.normalizedCause} recordId={record.id} />
+                                <JudgementTypeSelect value={record.judgementType} recordId={record.id} />
                               </div>
                               {record.extraFields?.orderNo && (
                                 <span className="text-xs text-slate-400 font-medium">
