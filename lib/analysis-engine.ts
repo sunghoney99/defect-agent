@@ -502,7 +502,7 @@ export async function analyzeFile(file: File, customRules?: Record<string, strin
   }
 }
 
-const DEFECT_ANALYSIS_TYPES = new Set(["세트교환요구", "고객불만"])
+export const DEFECT_ANALYSIS_TYPES = new Set(["세트교환요구", "고객불만"])
 
 export function buildMonthlyStats(records: DefectRecord[]): MonthlyStat[] {
   const map = new Map<string, MonthlyStat>()

@@ -13,6 +13,7 @@ import { ChevronRight, Box, Tag, ArrowLeft, FileText, MessageSquare, Trash2 } fr
 import { motion, AnimatePresence } from "framer-motion"
 import { CauseSelect } from "./cause-select"
 import { JudgementTypeSelect } from "./judgement-type-select"
+import { DEFECT_ANALYSIS_TYPES } from "@/lib/analysis-engine"
 
 type CategoryRow = {
   category: string
@@ -54,7 +55,7 @@ export function ReportView() {
       .sort((a, b) => b.totalCount - a.totalCount)
   }, [summary, selectedCategory])
 
-  // Get individual records for selected product
+  // Get individual records for selected product (세트교환요구/고객불만 건만 포함)
   const productRecords = useMemo(() => {
     if (!summary || !selectedProduct) return []
     const latestMonth = summary.monthlyStats[summary.monthlyStats.length - 1]?.monthKey
@@ -63,7 +64,8 @@ export function ReportView() {
       .filter(r =>
         r.monthKey === latestMonth &&
         r.product === selectedProduct.product &&
-        r.normalizedCause === selectedProduct.category
+        r.normalizedCause === selectedProduct.category &&
+        DEFECT_ANALYSIS_TYPES.has(r.judgementType)
       )
   }, [summary, selectedProduct])
 
